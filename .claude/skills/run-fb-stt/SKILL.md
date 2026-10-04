@@ -117,6 +117,27 @@ confirm the saved choice persists. Help check: `#helpPanel` hidden on load; clic
 `#helpToggle` → visible and `aria-expanded="true"`; click again → hidden; screenshot it in
 both themes; confirm `.version-info` version equals the top `#changelogList` entry.
 
+## GitHub / Pages
+
+- Repo `https://github.com/SinLiongToo/fb-video-stt` (public, branch `main`, Pages from
+  root): **https://sinliongtoo.github.io/fb-video-stt/**. Commit + `git push` deploys; poll
+  `gh api repos/SinLiongToo/fb-video-stt/pages/builds/latest --jq .status` until `built`.
+- Pages serves index.html only. `ON_PAGES` (hostname ends with `github.io`) switches
+  `API` to `http://localhost:8792`; `checkServer()` hits `/api/ping` and shows `#serverNote`.
+  Every new fetch must use `API + '/api/...'`.
+- server.py CORS allows only `ALLOWED_ORIGINS = {'https://sinliongtoo.github.io'}` and sends
+  `Access-Control-Allow-Private-Network: true`. Don't widen to `*`. JSON endpoints use
+  `get_json(silent=True)` (no `force=True`) so cross-site text/plain posts are rejected.
+- **Chrome 153 Local Network Access**: a public https page reaching localhost needs the
+  user's permission (one-time prompt). Headless Playwright denies it → "Permission was
+  denied … `loopback` address". Test with
+  `browser.newContext({ permissions: ['local-network-access'] })`. To test the live Pages
+  site against a server on another port, `page.route('http://localhost:8792/**', r =>
+  r.continue({ url: r.request().url().replace(':8792', ':8793') }))`.
+- Committed files: index.html, server.py, start.bat, requirements.txt, README.md,
+  .gitignore, .nojekyll, this skill. Keep personal paths out of README (use `%USERPROFILE%`).
+- Commits end with the `Co-Authored-By` line from the session's attribution reminder.
+
 ## Languages and translate
 
 - `language` whitelist in server.py: `auto, zh, en, ja, fr, nan` — add new ones there **and**
