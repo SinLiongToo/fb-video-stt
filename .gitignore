@@ -1,0 +1,8 @@
+.DS_Store
+Thumbs.db
+__pycache__/
+*.pyc
+*.m4a
+*.mp4
+*.wav
+.claude/settings.local.json

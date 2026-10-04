@@ -1,0 +1,4 @@
+flask>=3.1
+yt-dlp>=2026.8.19
+faster-whisper>=1.2.1
+python-docx>=1.2

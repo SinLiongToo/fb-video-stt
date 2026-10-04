@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FB 影片轉文字</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1c1e21; --muted: #65676b;
+    --border: #dadde1; --accent: #1877f2; --accent-text: #fff; --err: #c62828;
+    --ts: #8a8d91; --bar: #e4e6eb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #18191a; --card: #242526; --text: #e4e6eb; --muted: #b0b3b8;
+      --border: #3a3b3c; --accent: #2d88ff; --err: #ef6c6c; --ts: #8a8d91; --bar: #3a3b3c;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #18191a; --card: #242526; --text: #e4e6eb; --muted: #b0b3b8;
+    --border: #3a3b3c; --accent: #2d88ff; --err: #ef6c6c; --ts: #8a8d91; --bar: #3a3b3c;
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] { color-scheme: light; }
+  header { display: flex; gap: 12px; align-items: start; justify-content: space-between; }
+  #theme, #helpToggle { background: transparent; color: var(--text); border: 1px solid var(--border);
+    font-weight: 500; padding: 6px 12px; white-space: nowrap; }
+  #helpToggle[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: end; }
+  .version-info { color: var(--muted); font-size: .78rem; margin: -14px 0 20px; }
+  .help-panel h2 { font-size: 1.1rem; margin: 0 0 8px; }
+  .help-panel h3 { font-size: .95rem; margin: 16px 0 4px; color: var(--accent); }
+  .help-panel p, .help-panel ul, .help-panel ol { margin: 0 0 6px; color: var(--muted); font-size: .92rem; }
+  .help-panel ul, .help-panel ol { padding-left: 1.3em; }
+  .help-panel strong { color: var(--text); }
+  code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: .88em; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.6 system-ui, "Microsoft JhengHei", "PingFang TC", sans-serif; }
+  main { max-width: 820px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; font-size: .92rem; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  label { font-size: .85rem; color: var(--muted); display: block; margin-bottom: 4px; }
+  input, select, button { font: inherit; }
+  input[type=url] { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg); color: var(--text); }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; align-items: end; }
+  .row > div { flex: 1 1 160px; }
+  select { width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg); color: var(--text); }
+  button { padding: 10px 18px; border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-text);
+    cursor: pointer; font-weight: 600; }
+  button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--border); font-weight: 500; padding: 6px 12px; }
+  button:disabled, select:disabled { opacity: .5; cursor: default; }
+  .status { margin-top: 12px; font-size: .9rem; color: var(--muted); min-height: 1.4em; }
+  .status.err { color: var(--err); }
+  .bar { height: 6px; background: var(--bar); border-radius: 3px; overflow: hidden; margin-top: 8px; display: none; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .toolbar .spacer { flex: 1; }
+  .toolbar label { display: inline-flex; gap: 6px; align-items: center; margin: 0; }
+  #out { white-space: pre-wrap; word-break: break-word; }
+  .seg { display: flex; gap: 12px; padding: 4px 0; }
+  .seg .t { color: var(--ts); font-variant-numeric: tabular-nums; font-size: .85rem; flex: 0 0 auto; padding-top: 2px; }
+  .meta { color: var(--muted); font-size: .85rem; margin-bottom: 8px; }
+  .hidden { display: none; }
+  .seg .en { display: block; color: var(--muted); font-size: .9rem; font-style: italic; }
+  .hint { font-size: .82rem; color: var(--muted); margin-top: 10px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>FB 影片轉文字</h1>
+      <p class="sub">貼上 Facebook 影片或 Reel 網址，在你自己的電腦上辨識語音，輸出逐字稿。</p>
+    </div>
+    <div class="actions">
+      <button id="helpToggle" type="button" title="使用說明" aria-expanded="false" aria-controls="helpPanel">❓ 說明</button>
+      <button id="theme" type="button" title="切換深色／淺色模式">🖥 自動</button>
+    </div>
+  </header>
+  <p class="version-info">版本 v1.6｜最後更新 2026-10-04 18:06（台灣時間）｜完整記錄見「❓ 說明」</p>
+
+  <div class="card help-panel" id="helpPanel" hidden>
+    <h2>使用說明</h2>
+
+    <h3>開始之前</h3>
+    <p>這個頁面要透過本機伺服器開：雙擊資料夾裡的 <code>start.bat</code>（或執行 <code>python server.py</code>），
+      再用瀏覽器開 <code>http://localhost:8792/</code>。直接雙擊 <code>index.html</code> 沒辦法抓 FB 影片。
+      關掉那個黑色視窗，伺服器就停了。</p>
+
+    <h3>線上版（GitHub Pages）</h3>
+    <p>也可以從 <code>https://sinliongtoo.github.io/fb-video-stt/</code> 開。線上版只是<strong>畫面</strong>，
+      下載影片和辨識還是在你自己的電腦上跑，所以一樣要先開 <code>start.bat</code>；沒開的話頁面上會出現紅色提醒。
+      第一次用時瀏覽器可能會問「允許存取本機網路裝置」，請按允許。建議用 Chrome 或 Edge；
+      Safari 會擋住網頁連到本機，請改開 <code>http://localhost:8792/</code>。</p>
+    <p>第一次在新電腦上用：到 GitHub 下載這個專案，裝好 Python 後執行
+      <code>pip install -r requirements.txt</code>，之後雙擊 <code>start.bat</code> 即可。</p>
+
+    <h3>基本步驟</h3>
+    <ol>
+      <li>在 Facebook 影片或 Reel 上按「分享 → 複製連結」，貼到網址欄。</li>
+      <li>選語言（不確定就用「自動偵測」），再選「輸出」：只要原文、只要英文翻譯，或原文＋英文並列。</li>
+      <li>按「開始轉文字」或按 Enter。進度條依序是：下載音軌 → 載入模型 → 辨識中。</li>
+      <li>辨識出來的文字會邊跑邊出現，跑完會顯示影片長度、語言、模型、耗時。</li>
+    </ol>
+
+    <h3>語言怎麼選</h3>
+    <ul>
+      <li><strong>自動偵測</strong>：大部分情況用這個。英文、日文、法語、華語等都會照原本的語言寫出來
+        （支援約 99 種語言，選單沒列的語言也可以）。影片很短、或開頭都是音樂時偶爾會判錯，這時再手動指定語言。</li>
+      <li><strong>English／日本語／Français</strong>：確定是這個語言時可以直接指定，避免自動偵測判錯。</li>
+      <li><strong>中文（繁體）</strong>：確定是華語才選。<strong>英文影片不要選中文</strong>，會被硬翻成錯誤很多的中文。</li>
+      <li><strong>台語 → 華語（實驗性）</strong>：台語影片用。聽得懂台語，但寫出來的是<strong>華語</strong>
+        （例如「五千箍是毋是會當予我分做幾擺仔予你」會變成「五千塊能否分成幾次給你」），不是台語漢字逐字稿。
+        選這個時模型選單不適用。</li>
+    </ul>
+
+    <h3>輸出：原文、英文、或並列</h3>
+    <ul>
+      <li><strong>只要原文</strong>：照影片講的語言寫出來（預設）。</li>
+      <li><strong>只要英文翻譯</strong>：直接得到英文，例如中文或法語影片會得到英文字幕。</li>
+      <li><strong>原文＋英文並列</strong>：每句原文下面接一行英文（灰色斜體），一句對一句。
+        做法是先辨識原文，再把每一句對應的聲音拿去翻譯，所以比較慢，大約是只要原文的 3 倍時間
+（1 分鐘影片約 4 分鐘）；進度條前半是辨識、後半是翻譯。
+        如果影片本來就是英文，就不會再翻一次。</li>
+    </ul>
+    <p>只能翻成<strong>英文</strong>，沒辦法翻成中文（辨識模型本身的限制）。
+      要翻譯請用 small、medium 或 large-v3；<strong>large-v3-turbo 沒學過翻譯</strong>，常常還是輸出原文。
+      台語模式不能翻譯。</p>
+
+    <h3>模型怎麼選</h3>
+    <p>越大越準、也越慢。這台電腦沒有顯示卡（GPU），建議 <strong>small</strong>。
+      第一次用某個模型會先下載（幾百 MB 到 3GB），之後就不用。
+      參考：1 分鐘英文影片，small 約 20 秒；台語模式約 2 分半。</p>
+
+    <h3>結果怎麼用</h3>
+    <ul>
+      <li><strong>顯示時間碼</strong>：勾選時每段前面有 [分:秒]，複製／下載 .txt／.md／Word 也會跟著帶時間碼。</li>
+      <li><strong>複製</strong>：複製到剪貼簿。</li>
+      <li><strong>下載 .txt</strong>：純文字檔。</li>
+      <li><strong>下載 .srt</strong>：字幕檔，可以匯入剪映、Premiere、YouTube 等。並列模式會是雙語字幕（原文在上、英文在下）。</li>
+      <li><strong>下載 .md</strong>：Markdown 筆記檔，含標題、網址、資訊列，可以直接放進 Obsidian、Notion 等筆記軟體。</li>
+      <li><strong>下載 Word</strong>：.docx，含影片標題、網址、資訊列。</li>
+      <li>並列模式下，以上每一種都是「原文一行、英文一行」。</li>
+    </ul>
+
+    <h3>常見問題</h3>
+    <ul>
+      <li><strong>「失敗」或抓不到影片</strong>：只能抓<strong>公開</strong>影片；私人社團、限朋友的影片抓不到。
+        也可能是 Facebook 改版，更新 yt-dlp 試試：<code>pip install -U yt-dlp</code>。</li>
+      <li><strong>「連線中斷」或「連不到你電腦上的伺服器」</strong>：伺服器的黑色視窗沒開或被關掉了，重新執行 <code>start.bat</code>。</li>
+      <li><strong>新功能沒出現</strong>：伺服器要重開才會用到新版程式。在黑色視窗按 Ctrl+C，再執行一次 <code>start.bat</code>。</li>
+      <li><strong>「找不到台語模型」</strong>：台語模型要另外下載一次，指令在 README「台語模型」。</li>
+      <li><strong>辨識結果有錯字</strong>：語音辨識一定會有錯，請當草稿自己校對；換大一點的模型通常會好一些。</li>
+      <li><strong>音檔會被上傳嗎？</strong>不會。下載和辨識都在你自己的電腦上，暫存音檔辨識完就刪掉。</li>
+    </ul>
+
+    <h3>修改日誌</h3>
+    <ul id="changelogList">
+      <li><strong>v1.6 — 2026-10-04 18:06</strong>：放上 GitHub，提供線上版網頁（仍需在自己電腦上開 start.bat）。</li>
+      <li><strong>v1.5 — 2026-10-04 17:17</strong>：「翻成英文」改成「輸出」選單，新增原文＋英文並列；新增下載 .md。</li>
+      <li><strong>v1.4 — 2026-10-04 17:00</strong>：語言選單加入法語；新增「翻成英文」。</li>
+      <li><strong>v1.3 — 2026-10-04 16:39</strong>：加入「❓ 說明」面板與版本資訊。</li>
+      <li><strong>v1.2 — 2026-10-04</strong>：新增「台語 → 華語（實驗性）」，使用 Breeze-ASR-26；FB 標題前的按讚數自動去掉。</li>
+      <li><strong>v1.1 — 2026-10-04</strong>：深色／淺色模式切換；下載 Word。</li>
+      <li><strong>v1.0 — 2026-10-04</strong>：第一版：貼 FB 網址轉文字，複製／.txt／.srt。</li>
+    </ul>
+    <p class="hint">更完整的開發紀錄與台語模型實測過程，見資料夾裡的 README.md。</p>
+  </div>
+
+  <div class="card">
+    <label for="url">Facebook 影片網址</label>
+    <input id="url" type="url" placeholder="https://www.facebook.com/reel/1129966309452158">
+    <div class="row">
+      <div>
+        <label for="lang">語言</label>
+        <select id="lang">
+          <option value="auto" selected>自動偵測（建議）</option>
+          <option value="zh">中文（繁體）</option>
+          <option value="en">English</option>
+          <option value="ja">日本語</option>
+          <option value="fr">Français（法語）</option>
+          <option value="nan">台語 → 華語（實驗性）</option>
+        </select>
+      </div>
+      <div>
+        <label for="model">模型（越大越準、越慢）</label>
+        <select id="model">
+          <option value="base">base：最快</option>
+          <option value="small" selected>small：平衡（建議）</option>
+          <option value="medium">medium：較準</option>
+          <option value="large-v3-turbo">large-v3-turbo：準又不算太慢</option>
+          <option value="large-v3">large-v3：最準、最慢</option>
+        </select>
+      </div>
+      <div>
+        <label for="output">輸出</label>
+        <select id="output">
+          <option value="orig" selected>只要原文</option>
+          <option value="en">只要英文翻譯</option>
+          <option value="both">原文＋英文並列（約 3 倍時間）</option>
+        </select>
+      </div>
+      <div style="flex:0 0 auto"><button id="go">開始轉文字</button></div>
+    </div>
+    <p class="hint hidden" id="turboNote">large-v3-turbo 沒有學過翻譯，常常還是輸出原文；要英文翻譯請改用 small、medium 或 large-v3。</p>
+    <p class="hint hidden" id="taigiNote">台語固定使用聯發科 Breeze-ASR-26，模型選單不適用。
+      它聽得懂台語，但<strong>輸出的是華語漢字</strong>（意思對、用字是華語），不是台語正字逐字稿。
+      CPU 上約需影片長度的 2 倍時間。</p>
+    <div class="bar" id="bar"><i></i></div>
+    <div class="status" id="status"></div>
+    <p class="status err hidden" id="serverNote">⚠ 還沒連上你電腦上的伺服器。這個線上版網頁只是畫面，
+      下載與辨識要在你自己的電腦上跑：請先雙擊 <code>start.bat</code>（或執行 <code>python server.py</code>），
+      再重新整理這一頁。第一次瀏覽器可能會詢問「允許存取本機網路裝置」，請按允許。</p>
+    <p class="hint">需要先在本機啟動 <code>python server.py</code>（或雙擊 <code>start.bat</code>）。只能抓公開影片。</p>
+  </div>
+
+  <div class="card hidden" id="result">
+    <div class="meta" id="meta"></div>
+    <div class="toolbar">
+      <label><input type="checkbox" id="showTs" checked> 顯示時間碼</label>
+      <span class="spacer"></span>
+      <button class="ghost" id="copy">複製</button>
+      <button class="ghost" id="dlTxt">下載 .txt</button>
+      <button class="ghost" id="dlSrt">下載 .srt</button>
+      <button class="ghost" id="dlMd">下載 .md</button>
+      <button class="ghost" id="dlDocx">下載 Word</button>
+    </div>
+    <div id="out"></div>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let segments = [], pollTimer = null, lastJob = null;
+
+// 從本機伺服器開（http://localhost:8792/）時 API 同源；從 GitHub Pages 開時，
+// 改連使用者自己電腦上的 server.py（Pages 只放得了網頁，跑不了 Python）
+const ON_PAGES = location.hostname.endsWith('github.io');
+const API = ON_PAGES ? 'http://localhost:8792' : '';
+const SERVER_DOWN_MSG = '連不到你電腦上的伺服器：請先雙擊 start.bat（或執行 python server.py），再按一次。';
+async function checkServer() {
+  if (!ON_PAGES) return;
+  try {
+    const r = await fetch(API + '/api/ping');
+    if (!r.ok) throw new Error();
+    $('serverNote').classList.add('hidden');
+  } catch (e) {
+    $('serverNote').classList.remove('hidden');
+  }
+}
+
+// 主題：auto（跟系統）→ light → dark，記在 localStorage（讀寫失敗就當 auto）
+const THEMES = { auto: '🖥 自動', light: '☀️ 淺色', dark: '🌙 深色' };
+function applyTheme(t) {
+  if (t === 'auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', t);
+  $('theme').textContent = THEMES[t];
+  $('theme').dataset.mode = t;
+}
+let savedTheme = 'auto';
+try { savedTheme = localStorage.getItem('fbstt-theme') || 'auto'; } catch (e) {}
+applyTheme(THEMES[savedTheme] ? savedTheme : 'auto');
+$('theme').onclick = () => {
+  const order = ['auto', 'light', 'dark'];
+  const next = order[(order.indexOf($('theme').dataset.mode) + 1) % order.length];
+  applyTheme(next);
+  try { localStorage.setItem('fbstt-theme', next); } catch (e) {}
+};
+
+const fmt = s => {
+  const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+};
+const srtTime = s => {
+  const ms = Math.round(s * 1000), h = Math.floor(ms / 3600000), m = Math.floor(ms % 3600000 / 60000),
+        sec = Math.floor(ms % 60000 / 1000), r = ms % 1000;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')},${String(r).padStart(3,'0')}`;
+};
+
+function setStatus(msg, isErr) {
+  $('status').textContent = msg;
+  $('status').classList.toggle('err', !!isErr);
+}
+function setProgress(p) {
+  $('bar').style.display = p == null ? 'none' : 'block';
+  $('bar').firstElementChild.style.width = (p || 0) + '%';
+}
+
+// 並列模式下每段多一個 en 欄位：畫面與所有匯出都是「原文一行、英文一行」
+function render() {
+  const out = $('out');
+  out.innerHTML = '';
+  const showTs = $('showTs').checked;
+  for (const s of segments) {
+    const d = document.createElement('div'); d.className = 'seg';
+    if (showTs) {
+      const t = document.createElement('span'); t.className = 't'; t.textContent = fmt(s.start);
+      d.append(t);
+    }
+    const x = document.createElement('span'); x.textContent = s.text;
+    if (s.en) {
+      const e = document.createElement('span'); e.className = 'en'; e.textContent = s.en;
+      x.append(e);
+    }
+    d.append(x); out.append(d);
+  }
+}
+const withEn = (line, s) => s.en ? `${line}\n${s.en}` : line;
+const plainText = () => segments.map(s => withEn(s.text, s)).join(hasEn() ? '\n\n' : '\n');
+const tsText = () => segments.map(s => withEn(`[${fmt(s.start)}] ${s.text}`, s)).join(hasEn() ? '\n\n' : '\n');
+const srtText = () => segments.map((s, i) => `${i + 1}\n${srtTime(s.start)} --> ${srtTime(s.end)}\n${withEn(s.text, s)}\n`).join('\n');
+const hasEn = () => segments.some(s => s.en);
+const titleText = () => (lastJob && lastJob.title) ? lastJob.title.slice(0, 80) : 'FB 影片逐字稿';
+// Markdown：標題、來源、資訊列，每段一個段落；英文用斜體接在下一行（行尾兩個空白＝換行）
+const mdEsc = t => t.replace(/([\\`*_\[\]<>#|])/g, '\\$1');
+function mdText() {
+  const lines = [`# ${mdEsc(titleText())}`, '', `- 來源：<${$('url').value.trim()}>`];
+  if ($('meta').textContent) lines.push(`- 資訊：${mdEsc($('meta').textContent)}`);
+  lines.push('', '---', '');
+  for (const s of segments) {
+    const head = $('showTs').checked ? `**[${fmt(s.start)}]** ` : '';
+    lines.push(head + mdEsc(s.text) + (s.en ? `  \n*${mdEsc(s.en)}*` : ''), '');
+  }
+  return lines.join('\n');
+}
+
+function download(name, text) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+  a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+const baseName = () => 'fb_' + (($('url').value.match(/(\d{6,})/) || [])[1] || 'transcript');
+
+async function start() {
+  const url = $('url').value.trim();
+  if (!url) { setStatus('請先貼上網址', true); return; }
+  if (location.protocol === 'file:') {
+    setStatus('請用 python server.py 啟動後，開 http://localhost:8792/（直接雙擊 html 無法抓 FB 影片）', true);
+    return;
+  }
+  if (ON_PAGES) {
+    await checkServer();
+    if (!$('serverNote').classList.contains('hidden')) { setStatus(SERVER_DOWN_MSG, true); return; }
+  }
+  $('go').disabled = true;
+  segments = []; $('result').classList.add('hidden');
+  setStatus('送出中…'); setProgress(0);
+  try {
+    const r = await fetch(API + '/api/transcribe', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, model: $('model').value, language: $('lang').value,
+                             output: $('output').disabled ? 'orig' : $('output').value })
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.statusText);
+    poll(j.id);
+  } catch (e) {
+    setStatus('錯誤：' + e.message, true); setProgress(null); $('go').disabled = false;
+  }
+}
+
+function poll(id) {
+  clearTimeout(pollTimer);
+  pollTimer = setTimeout(async () => {
+    try {
+      const j = await (await fetch(API + '/api/job/' + id)).json();
+      setStatus(j.message + (j.status === 'downloading' || j.status === 'transcribing' ? ` ${j.progress}%` : ''),
+                j.status === 'error');
+      setProgress(j.status === 'error' ? null : j.progress);
+      if (j.segments && j.segments.length) {
+        segments = j.segments; $('result').classList.remove('hidden'); render();
+      }
+      if (j.status === 'done' || j.status === 'error') {
+        $('go').disabled = false;
+        if (j.status === 'done') {
+          setProgress(null);
+          lastJob = j;
+          $('meta').textContent = [j.title && j.title.slice(0, 80), j.duration && `長度 ${fmt(j.duration)}`,
+            j.language && `語言 ${j.language}`, `模型 ${j.model}`, `耗時 ${j.elapsed}s`, j.note].filter(Boolean).join(' ・ ');
+          if (!segments.length) setStatus('完成，但沒有辨識到語音', true);
+        }
+        return;
+      }
+      poll(id);
+    } catch (e) {
+      setStatus('連線中斷：' + e.message, true); $('go').disabled = false;
+    }
+  }, 1000);
+}
+
+$('helpToggle').onclick = () => {
+  const panel = $('helpPanel');
+  panel.hidden = !panel.hidden;
+  $('helpToggle').setAttribute('aria-expanded', String(!panel.hidden));
+  if (!panel.hidden) panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+};
+
+// 台語固定用 Breeze：模型選單、英文翻譯都不適用。turbo 不會翻譯，選了翻譯時提醒
+function syncLang() {
+  const taigi = $('lang').value === 'nan';
+  $('model').disabled = taigi;
+  $('output').disabled = taigi;
+  $('taigiNote').classList.toggle('hidden', !taigi);
+  $('turboNote').classList.toggle('hidden',
+    taigi || $('output').value === 'orig' || $('model').value !== 'large-v3-turbo');
+}
+$('lang').onchange = syncLang;
+$('model').onchange = syncLang;
+$('output').onchange = syncLang;
+checkServer();
+syncLang();
+
+$('go').onclick = start;
+$('url').addEventListener('keydown', e => { if (e.key === 'Enter') start(); });
+$('showTs').onchange = render;
+$('copy').onclick = async () => {
+  await navigator.clipboard.writeText($('showTs').checked ? tsText() : plainText());
+  $('copy').textContent = '已複製'; setTimeout(() => $('copy').textContent = '複製', 1200);
+};
+$('dlTxt').onclick = () => download(baseName() + '.txt', $('showTs').checked ? tsText() : plainText());
+$('dlSrt').onclick = () => download(baseName() + '.srt', srtText());
+$('dlMd').onclick = () => download(baseName() + '.md', mdText());
+$('dlDocx').onclick = async () => {
+  try {
+    const r = await fetch(API + '/api/docx', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        segments, timestamps: $('showTs').checked, filename: baseName(),
+        title: titleText(),
+        url: $('url').value.trim(), meta: $('meta').textContent
+      })
+    });
+    if (!r.ok) throw new Error(r.statusText);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(await r.blob());
+    a.download = baseName() + '.docx'; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  } catch (e) { setStatus('Word 匯出失敗：' + e.message, true); }
+};
+</script>
+</body>
+</html>
