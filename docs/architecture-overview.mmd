@@ -1,0 +1,35 @@
+flowchart TD
+    subgraph BROWSER["瀏覽器（index.html）"]
+        UI["網址／語言／模型／輸出<br/>❓ 說明・深淺色"]
+        VIEW["結果畫面<br/>原文＋英文並列"]
+        EXP["複製・.txt・.srt・.md<br/>（前端產生）"]
+    end
+
+    PAGES["GitHub Pages<br/>sinliongtoo.github.io/fb-video-stt<br/>只放網頁"] -.->|"載入畫面"| UI
+    LOCALPAGE["http://localhost:8792/<br/>server.py 直接提供"] -.->|"載入畫面"| UI
+
+    subgraph PC["你的電腦（start.bat → server.py，Flask，只綁 127.0.0.1）"]
+        API["/api/transcribe<br/>/api/job/&lt;id&gt;<br/>/api/ping"]
+        CORS{"CORS 只允許<br/>sinliongtoo.github.io"}
+        JOB["背景工作 run_job()"]
+        YTDLP["yt-dlp<br/>只抓音軌 m4a"]
+        TMP[("%TEMP%/fb_stt<br/>暫存音檔，用完刪除")]
+        FW["faster-whisper<br/>CPU int8，一次只載入一個模型"]
+        DOCX["/api/docx<br/>python-docx"]
+        subgraph MODELS["模型"]
+            WH["Whisper base～large-v3<br/>（HF 快取，自動下載）"]
+            BZ["Breeze-ASR-26 int8<br/>~/.cache/fb_stt（台語→華語）"]
+        end
+    end
+
+    FB["Facebook<br/>公開影片／Reel"]
+
+    UI -->|"POST JSON"| CORS --> API --> JOB
+    JOB --> YTDLP -->|"下載"| FB
+    YTDLP --> TMP --> FW
+    WH --> FW
+    BZ --> FW
+    FW -->|"segments（＋en）"| JOB
+    VIEW -->|"每秒輪詢進度"| API
+    VIEW --> EXP
+    VIEW -->|"下載 Word"| DOCX

@@ -59,8 +59,136 @@ GitHub Pages 只能放靜態網頁，**不能執行 Python**，所以線上版�
 | `server.py` | 本機 Flask 伺服器：yt-dlp 下載音軌 → faster-whisper 辨識；Word 匯出 |
 | `start.bat` | 一鍵啟動並開瀏覽器 |
 | `requirements.txt` | Python 套件清單 |
-| `.nojekyll` | 讓 GitHub Pages 原樣提供檔案 |
+| `.nojekyll` | 讓 GitHub Pages 原樣提供檔案（必須是空檔） |
+| `docs/architecture-*.mmd`／`.svg` | 架構圖原始碼與預先產生的 SVG（見「架構圖」） |
 | `.claude/skills/run-fb-stt/SKILL.md` | 給 Claude 用的「怎麼啟動／測試這個工具」說明 |
+
+## 架構圖
+
+下面三張圖用 GitHub 原生支援的 Mermaid 語法畫，在 GitHub 上開 README 會自動顯示成圖。
+同樣的圖也有預先產生好的 SVG，放在 [docs/](docs)，不用連網、Markdown 工具不支援 Mermaid 時也能直接用瀏覽器開：
+[architecture-overview.svg](docs/architecture-overview.svg)、[architecture-job.svg](docs/architecture-job.svg)、[architecture-modes.svg](docs/architecture-modes.svg)。
+
+**圖的原始碼是 `docs/*.mmd`**，README 裡的圖是從那裡複製來的。改圖時改 `.mmd`，再重新產生 SVG 並更新 README 這一節：
+
+```bash
+npx @mermaid-js/mermaid-cli -i docs/architecture-overview.mmd -o docs/architecture-overview.svg -b white
+```
+
+### 1. 整體架構
+
+網頁可以從本機或 GitHub Pages 開，但下載與辨識一律在你自己的電腦上跑。
+
+```mermaid
+flowchart TD
+    subgraph BROWSER["瀏覽器（index.html）"]
+        UI["網址／語言／模型／輸出<br/>❓ 說明・深淺色"]
+        VIEW["結果畫面<br/>原文＋英文並列"]
+        EXP["複製・.txt・.srt・.md<br/>（前端產生）"]
+    end
+
+    PAGES["GitHub Pages<br/>sinliongtoo.github.io/fb-video-stt<br/>只放網頁"] -.->|"載入畫面"| UI
+    LOCALPAGE["http://localhost:8792/<br/>server.py 直接提供"] -.->|"載入畫面"| UI
+
+    subgraph PC["你的電腦（start.bat → server.py，Flask，只綁 127.0.0.1）"]
+        API["/api/transcribe<br/>/api/job/&lt;id&gt;<br/>/api/ping"]
+        CORS{"CORS 只允許<br/>sinliongtoo.github.io"}
+        JOB["背景工作 run_job()"]
+        YTDLP["yt-dlp<br/>只抓音軌 m4a"]
+        TMP[("%TEMP%/fb_stt<br/>暫存音檔，用完刪除")]
+        FW["faster-whisper<br/>CPU int8，一次只載入一個模型"]
+        DOCX["/api/docx<br/>python-docx"]
+        subgraph MODELS["模型"]
+            WH["Whisper base～large-v3<br/>（HF 快取，自動下載）"]
+            BZ["Breeze-ASR-26 int8<br/>~/.cache/fb_stt（台語→華語）"]
+        end
+    end
+
+    FB["Facebook<br/>公開影片／Reel"]
+
+    UI -->|"POST JSON"| CORS --> API --> JOB
+    JOB --> YTDLP -->|"下載"| FB
+    YTDLP --> TMP --> FW
+    WH --> FW
+    BZ --> FW
+    FW -->|"segments（＋en）"| JOB
+    VIEW -->|"每秒輪詢進度"| API
+    VIEW --> EXP
+    VIEW -->|"下載 Word"| DOCX
+```
+
+### 2. 一次轉文字的流程
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as 使用者
+    participant P as 網頁 index.html
+    participant S as server.py
+    participant Y as yt-dlp
+    participant F as Facebook
+    participant W as faster-whisper
+
+    U->>P: 貼網址、選語言／模型／輸出，按「開始轉文字」
+    opt 從 GitHub Pages 開啟
+        P->>S: GET /api/ping（http://localhost:8792）
+        S-->>P: ok（沒開 start.bat → 紅色提醒，停止）
+    end
+    P->>S: POST /api/transcribe {url, model, language, output}
+    S->>S: 檢查：只收 FB 網址、語言／輸出白名單、必須是 JSON
+    S-->>P: {id}，背景執行緒開始工作
+    loop 每 1 秒
+        P->>S: GET /api/job/{id}
+        S-->>P: 狀態、進度 %、目前已辨識的 segments
+    end
+    S->>Y: 下載音軌（進度 0–100%）
+    Y->>F: 抓公開影片的 m4a
+    F-->>Y: 音檔 → %TEMP%/fb_stt
+    S->>W: 載入模型（台語固定 Breeze；切換模型時釋放舊的）
+    S->>W: transcribe（輸出＝只要英文時 task=translate）
+    W-->>S: 逐段產生 segments（進度依時間位置）
+    opt 輸出＝原文＋英文並列（原文不是英文時）
+        loop 每一段原文
+            S->>W: 該段的聲音片段 → task=translate
+            W-->>S: 寫入 segment.en（進度 50–99%）
+        end
+    end
+    S->>S: 刪除暫存音檔，狀態＝完成
+    S-->>P: 完成：長度、語言、模型、耗時
+    U->>P: 複製／下載 .txt .srt .md（前端產生）
+    U->>P: 下載 Word
+    P->>S: POST /api/docx {segments, …}
+    S-->>P: .docx
+```
+
+### 3. 語言與輸出選項決定怎麼跑
+
+```mermaid
+flowchart TD
+    START(["選好語言、模型、輸出"]) --> L{"語言？"}
+
+    L -->|"台語 → 華語"| TG["模型固定 Breeze-ASR-26 int8<br/>模型選單、輸出選單停用"]
+    TG --> TGOUT["輸出華語漢字（意思對，不是台語正字）"]
+
+    L -->|"自動偵測／中文／English／日本語／Français"| O{"輸出？"}
+
+    O -->|"只要原文"| ORIG["task=transcribe<br/>自動／中文加繁體＋標點提示"]
+    O -->|"只要英文翻譯"| EN["task=translate<br/>（不加中文提示）"]
+    O -->|"原文＋英文並列"| BOTH["先 transcribe 原文"]
+
+    BOTH --> ISEN{"偵測到的語言是英文？"}
+    ISEN -->|"是"| SKIP["不再翻譯<br/>資訊列加註"]
+    ISEN -->|"否"| PER["每段原文的聲音片段<br/>各自 translate → segment.en<br/>（短於 0.3 秒略過；約 3 倍時間）"]
+
+    EN -.-> TURBO["⚠ large-v3-turbo 沒學過翻譯<br/>畫面顯示提醒"]
+    PER -.-> TURBO
+
+    ORIG --> OUT[["畫面＋匯出<br/>複製・.txt・.srt・.md・Word"]]
+    EN --> OUT
+    SKIP --> OUT
+    PER --> OUT
+    TGOUT --> OUT
+```
 
 ## 環境需求
 
@@ -118,6 +246,10 @@ Breeze 實際輸出 vs 貼文原文：
 ## 開發紀錄（Changelog）
 
 > 版本號要在三個地方同步：`index.html` 最上方的 `.version-info`、「❓ 說明」裡的 `#changelogList`、以及這裡。
+
+### [2026-10-04] 文件：架構圖（不影響功能，版本號不變）
+- README 新增「架構圖」：整體架構、一次轉文字的流程（時序圖）、語言與輸出選項的決策流程。
+- 圖的原始碼在 `docs/*.mmd`，另附預先產生的 SVG。
 
 ### [2026-10-04] v1.6 — GitHub 與線上版
 - 建立 GitHub repo `SinLiongToo/fb-video-stt`，開 GitHub Pages：https://sinliongtoo.github.io/fb-video-stt/

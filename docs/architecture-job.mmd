@@ -1,0 +1,39 @@
+sequenceDiagram
+    autonumber
+    participant U as 使用者
+    participant P as 網頁 index.html
+    participant S as server.py
+    participant Y as yt-dlp
+    participant F as Facebook
+    participant W as faster-whisper
+
+    U->>P: 貼網址、選語言／模型／輸出，按「開始轉文字」
+    opt 從 GitHub Pages 開啟
+        P->>S: GET /api/ping（http://localhost:8792）
+        S-->>P: ok（沒開 start.bat → 紅色提醒，停止）
+    end
+    P->>S: POST /api/transcribe {url, model, language, output}
+    S->>S: 檢查：只收 FB 網址、語言／輸出白名單、必須是 JSON
+    S-->>P: {id}，背景執行緒開始工作
+    loop 每 1 秒
+        P->>S: GET /api/job/{id}
+        S-->>P: 狀態、進度 %、目前已辨識的 segments
+    end
+    S->>Y: 下載音軌（進度 0–100%）
+    Y->>F: 抓公開影片的 m4a
+    F-->>Y: 音檔 → %TEMP%/fb_stt
+    S->>W: 載入模型（台語固定 Breeze；切換模型時釋放舊的）
+    S->>W: transcribe（輸出＝只要英文時 task=translate）
+    W-->>S: 逐段產生 segments（進度依時間位置）
+    opt 輸出＝原文＋英文並列（原文不是英文時）
+        loop 每一段原文
+            S->>W: 該段的聲音片段 → task=translate
+            W-->>S: 寫入 segment.en（進度 50–99%）
+        end
+    end
+    S->>S: 刪除暫存音檔，狀態＝完成
+    S-->>P: 完成：長度、語言、模型、耗時
+    U->>P: 複製／下載 .txt .srt .md（前端產生）
+    U->>P: 下載 Word
+    P->>S: POST /api/docx {segments, …}
+    S-->>P: .docx

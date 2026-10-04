@@ -117,6 +117,19 @@ confirm the saved choice persists. Help check: `#helpPanel` hidden on load; clic
 `#helpToggle` → visible and `aria-expanded="true"`; click again → hidden; screenshot it in
 both themes; confirm `.version-info` version equals the top `#changelogList` entry.
 
+## Architecture diagrams (README「架構圖」)
+
+- Source of truth: `docs/architecture-{overview,job,modes}.mmd`. README embeds copies in
+  ```` ```mermaid ```` blocks; `docs/*.svg` are pre-rendered for offline viewing (same
+  convention as `../project_claude_TTS_SST`, which the user asked for — don't drop the SVGs).
+- **Any change to the flow (new endpoint, phase, option, model, export) → update the
+  matching `.mmd`, re-render, and re-copy into README in the same change.** Render:
+  `npx -y @mermaid-js/mermaid-cli -i docs/architecture-X.mmd -o docs/architecture-X.svg -b white`.
+  Never hand-edit the SVGs.
+- Preview check: render to PNG in the scratchpad (`-o arch-X.png -b white -s 1`) and look at
+  it. Playwright full-page screenshots of the SVG time out (too large). Keep `overview` as
+  `flowchart TD` — `LR` renders too wide to read.
+
 ## GitHub / Pages
 
 - Repo `https://github.com/SinLiongToo/fb-video-stt` (public, branch `main`, Pages from

@@ -1,0 +1,24 @@
+flowchart TD
+    START(["選好語言、模型、輸出"]) --> L{"語言？"}
+
+    L -->|"台語 → 華語"| TG["模型固定 Breeze-ASR-26 int8<br/>模型選單、輸出選單停用"]
+    TG --> TGOUT["輸出華語漢字（意思對，不是台語正字）"]
+
+    L -->|"自動偵測／中文／English／日本語／Français"| O{"輸出？"}
+
+    O -->|"只要原文"| ORIG["task=transcribe<br/>自動／中文加繁體＋標點提示"]
+    O -->|"只要英文翻譯"| EN["task=translate<br/>（不加中文提示）"]
+    O -->|"原文＋英文並列"| BOTH["先 transcribe 原文"]
+
+    BOTH --> ISEN{"偵測到的語言是英文？"}
+    ISEN -->|"是"| SKIP["不再翻譯<br/>資訊列加註"]
+    ISEN -->|"否"| PER["每段原文的聲音片段<br/>各自 translate → segment.en<br/>（短於 0.3 秒略過；約 3 倍時間）"]
+
+    EN -.-> TURBO["⚠ large-v3-turbo 沒學過翻譯<br/>畫面顯示提醒"]
+    PER -.-> TURBO
+
+    ORIG --> OUT[["畫面＋匯出<br/>複製・.txt・.srt・.md・Word"]]
+    EN --> OUT
+    SKIP --> OUT
+    PER --> OUT
+    TGOUT --> OUT
