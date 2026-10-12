@@ -172,6 +172,27 @@ both themes; confirm `.version-info` version equals the top `#changelogList` ent
 - Not done yet (user may ask): prefer YouTube's existing subtitles over ASR; a cancel
   button for long videos.
 
+## Punctuation & segmentation (v1.8, README「標點與斷句」)
+
+- All recognition goes through `transcribe_file(model, path, language, output, taigi,
+  on_segment)`; `run_job` and test scripts share it — test it directly, no server needed.
+- A1 `fix_punct()`: CJK-only normalisation (half→full width, CJK-space→「，」, `...`→`…`,
+  dedupe). Must leave `1,000`, `12:30` and non-CJK text untouched.
+- A2 `ZH_PROMPT` (example sentences, not a description) only when language is `zh` **and
+  not taigi**. Auto mode runs `model.detect_language()` first to decide.
+- A3 `resegment()` (word timestamps) splits only **inside** each Whisper segment; never
+  regroup across segments except gluing a 1-word tail onto an unfinished previous line.
+  English must stay sentence-whole — re-check the FB English reel after any change.
+- **Breeze (taigi): no word timestamps, no prompt.** Word timestamps made it 9×+ slower and
+  hallucinate over end music; the prompt broke its timestamps (six lines at 1.5–1.6 s).
+  It uses `split_by_text()` (split on punctuation, time ∝ char count) with a guard that
+  stretches impossibly short segment ends to the next segment start.
+- Before/after harness lives in the scratchpad (`punct/before.py`, `punct/after.py`) — if
+  gone, rebuild: run the 4 clips (Hanhan zh TTS, taigi reel, FB English reel, zoo) and
+  print segments side by side. Expected after: zh 9 segs full-width; taigi 13 segs with
+  「，」, text unchanged; fben 17 sentence-whole; zoo 4.
+- More segments → `both` translation ~40 % slower (one translate pass per line).
+
 ## Languages and translate
 
 - `language` whitelist in server.py: `auto, zh, en, ja, fr, nan` — add new ones there **and**

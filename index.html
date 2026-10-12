@@ -82,7 +82,7 @@
       <button id="theme" type="button" title="切換深色／淺色模式">🖥 自動</button>
     </div>
   </header>
-  <p class="version-info">版本 v1.7｜最後更新 2026-10-12 12:50（台灣時間）｜完整記錄見「❓ 說明」</p>
+  <p class="version-info">版本 v1.8｜最後更新 2026-10-12 13:38（台灣時間）｜完整記錄見「❓ 說明」</p>
 
   <div class="card help-panel" id="helpPanel" hidden>
     <h2>使用說明</h2>
@@ -160,12 +160,14 @@
       <li><strong>新功能沒出現</strong>：伺服器要重開才會用到新版程式。在黑色視窗按 Ctrl+C，再執行一次 <code>start.bat</code>。</li>
       <li><strong>「找不到台語模型」</strong>：台語模型要另外下載一次，指令在 README「台語模型」。</li>
       <li><strong>辨識結果有錯字</strong>：語音辨識一定會有錯，請當草稿自己校對；換大一點的模型通常會好一些。</li>
+      <li><strong>標點和斷句</strong>：程式會自動把中文標點改成全形、在停頓處補逗號或句號，並把太長的段落切成一行字幕的長度（中文約 22 字、7 秒內）。標點是依停頓推測的，不一定完全符合語意，請當草稿校對。辨識中先顯示原始分段，<strong>完成時會重新排過一次</strong>，行數變多是正常的。</li>
       <li><strong>音檔會被上傳嗎？</strong>不會。下載和辨識都在你自己的電腦上，暫存音檔辨識完就刪掉。</li>
       <li><strong>有用到 ChatGPT 這類 AI 嗎？</strong>沒有。辨識和翻譯都是電腦上的 Whisper 語音模型，不連任何 AI 服務、不花錢。</li>
     </ul>
 
     <h3>修改日誌</h3>
     <ul id="changelogList">
+      <li><strong>v1.8 — 2026-10-12 13:38</strong>：改善中文標點（全形、補句尾）與斷句（太長的段落自動切成字幕長度），台語模式也有標點了。</li>
       <li><strong>v1.7 — 2026-10-12 12:50</strong>：支援 YouTube 影片／Shorts 網址；FB 標題前的觀看數、按讚數都會去掉。</li>
       <li><strong>v1.6 — 2026-10-04 18:06</strong>：放上 GitHub，提供線上版網頁（仍需在自己電腦上開 start.bat）。</li>
       <li><strong>v1.5 — 2026-10-04 17:17</strong>：「翻成英文」改成「輸出」選單，新增原文＋英文並列；新增下載 .md。</li>

@@ -112,6 +112,197 @@ def download_audio(url, job):
     return path, info
 
 
+# ── 標點與斷句（v1.8，A1–A3，不用 LLM）──────────────────────────────────────
+# A2：Whisper 比較會「模仿範例」而不是「聽說明」，所以提示詞給一小段標點正確的範例句。
+#     只給中文；英文 Whisper 本來就會下標點，給了反而可能干擾。
+ZH_PROMPT = '嗯，大家好。今天我們來聊一聊，好嗎？其實沒有那麼難！我覺得：先試試看，再說。'
+CJK_RE = re.compile(r'[㐀-鿿豈-﫿]')
+CJK = r'㐀-鿿豈-﫿'
+SENT_END = '。！？!?…'
+SOFT_END = '，、,；;：:'
+# A3：斷句上限。字幕一行讀得完的長度；中文以字數算，英文以字元算
+MAX_CHARS = {'cjk': 22, 'other': 84}
+MAX_DUR = 7.0      # 秒
+PAUSE = 0.6        # 停頓超過這麼久就斷句
+LONG_PAUSE = 1.0   # 中文段尾沒標點時：停這麼久補「。」，否則補「，」
+
+
+def fix_punct(text):
+    """A1：中文標點整理。半形改全形、中文字之間的空白改「，」、清掉重複標點。
+    不含中文的句子只整理空白（英文 Whisper 本來就處理得好）。"""
+    t = re.sub(r'\s+', ' ', text).strip()
+    if not CJK_RE.search(t):
+        return t
+    t = t.replace('...', '…').replace('。。。', '…')
+    t = re.sub(r'(?<!\d),|,(?!\d)', '，', t)              # 1,000 這種數字不動
+    t = re.sub(r'(?<!\d):|:(?!\d)', '：', t)               # 12:30 不動
+    t = t.replace('?', '？').replace('!', '！').replace(';', '；')
+    t = re.sub(rf'(?<=[{CJK}])\.(?!\d)', '。', t)           # 中文後面的句點
+    t = re.sub(rf'(?<=[{CJK}])\s+(?=[{CJK}])', '，', t)    # Breeze 用空白斷句
+    t = re.sub(r'\s*([，。！？、；：…])\s*', r'\1', t)       # 全形標點旁不留空白
+    t = re.sub(r'([，、；：])[，、；：]+', r'\1', t)          # ，， → ，
+    t = re.sub(r'[，、；：]+([。！？…])', r'\1', t)           # ，。 → 。
+    return t.lstrip('，。、；：')
+
+
+def _split_long(words, max_chars, cjk):
+    """太長的一段：往回找最後一個逗號處切；找不到就在中間切。"""
+    text_len = lambda ws: len(''.join(w['w'] for w in ws).strip()) if cjk else len(' '.join(w['w'].strip() for w in ws))
+    for i in range(len(words) - 1, 0, -1):
+        if words[i - 1]['w'].strip()[-1:] in SOFT_END and text_len(words[:i]) >= max_chars * 0.4:
+            return words[:i], words[i:]
+    mid = max(1, len(words) // 2)
+    return words[:mid], words[mid:]
+
+
+def resegment(raw_segments, cjk):
+    """A3：用逐字時間戳把「太長的段」切開。raw_segments 是 faster-whisper 的 Segment（含 words）。
+    只在每個原始段落「裡面」切，不跨段合併：Whisper 自己的分段通常已經是句子
+    （英文尤其好），真正的問題是 Breeze 那種 30 秒一大段。
+    段內遇句尾標點、停頓 ≥ PAUSE 秒就切；超過字數／秒數上限時優先在逗號處切。"""
+    max_chars = MAX_CHARS['cjk' if cjk else 'other']
+    sent_end = SENT_END if cjk else SENT_END + '.'
+    joined = lambda ws: ''.join(w['w'] for w in ws) if cjk else ''.join(w['w'] for w in ws).strip()
+    segs = []
+    for s in raw_segments:
+        ws = []
+        for w in (s.words or []):
+            txt = w.word
+            # Breeze／中文：詞前面的空白代表停頓斷句，標在前一個字後面當逗號
+            if cjk and ws and txt[:1].isspace() and CJK_RE.match(txt.strip()[:1] or 'a') \
+                    and CJK_RE.search(ws[-1]['w'][-1:]):
+                ws[-1]['w'] += '，'
+            ws.append({'w': txt.strip() if cjk else txt, 's': w.start, 'e': w.end})
+        if ws:
+            segs.append(ws)
+    if not segs:
+        return None
+    merged = []                             # [(words, 跟下一段的間隔秒數)]
+    for si, words in enumerate(segs):
+        next_start = segs[si + 1][0]['s'] if si + 1 < len(segs) else None
+        groups, cur = [], []
+        for i, w in enumerate(words):
+            cur.append(w)
+            nxt = words[i + 1] if i + 1 < len(words) else None
+            if nxt is None:
+                groups.append(cur); break
+            gap = nxt['s'] - w['e']
+            if w['w'].strip()[-1:] in sent_end or gap >= PAUSE:
+                groups.append(cur); cur = []
+            elif len(joined(cur)) >= max_chars or cur[-1]['e'] - cur[0]['s'] >= MAX_DUR:
+                head, tail = _split_long(cur, max_chars, cjk)
+                groups.append(head); cur = list(tail)
+        # 段內太短的（一兩個字、不到 0.8 秒）併回前一塊
+        pieces = []
+        for g in groups:
+            t = joined(g)
+            tiny = (len(t) <= 2 if cjk else len(t.split()) <= 1) or g[-1]['e'] - g[0]['s'] < 0.8
+            if pieces and tiny:
+                pieces[-1] = pieces[-1] + g
+            else:
+                pieces.append(g)
+        for pi, g in enumerate(pieces):
+            if pi + 1 < len(pieces):
+                gap = pieces[pi + 1][0]['s'] - g[-1]['e']
+            else:
+                gap = (next_start - g[-1]['e']) if next_start is not None else 99
+            # 跨段：Whisper 自己把一句話尾巴切成很小一段（"…but they don't" / "know."）時，
+            # 前一行還沒講完（沒有句尾標點）又沒停頓，就把小尾巴接回去
+            t = joined(g)
+            tiny = (len(t) <= 2 if cjk else len(t.split()) <= 1)
+            if pi == 0 and tiny and merged and merged[-1][1] < PAUSE \
+                    and merged[-1][0][-1]['w'].strip()[-1:] not in sent_end:
+                merged[-1] = (merged[-1][0] + g, gap)
+            else:
+                merged.append((g, gap))
+    out = []
+    for ws, gap in merged:
+        text = fix_punct(joined(ws))
+        if not text:
+            continue
+        if cjk and text[-1] not in SENT_END + '，、；：':
+            text += '。' if gap >= LONG_PAUSE else '，'
+        if cjk and text.endswith('，') and gap >= LONG_PAUSE:
+            text = text[:-1] + '。'
+        out.append({'start': round(ws[0]['s'], 2), 'end': round(ws[-1]['e'], 2), 'text': text})
+    return out
+
+
+def split_by_text(start, end, text, cjk):
+    """沒有逐字時間戳時的斷句（台語 Breeze 用這個）：先整理標點（Breeze 的空白會變成「，」），
+    再照標點切成子句、依字數上限打包；每塊的時間照字數比例分配（大約準，夠用）。"""
+    text = fix_punct(text)
+    max_chars = MAX_CHARS['cjk' if cjk else 'other']
+    ends = SENT_END + ('' if cjk else '.')
+    clauses = [c for c in re.split(r'(?<=[' + re.escape(ends + SOFT_END) + r'])\s*', text) if c]
+    pieces, cur = [], ''
+    for c in clauses:
+        if cur and len(cur) + len(c) > max_chars:
+            pieces.append(cur); cur = ''
+        cur += c if cjk else (' ' + c if cur else c)
+        if cur[-1:] in ends:
+            pieces.append(cur); cur = ''
+    if cur:
+        pieces.append(cur)
+    total = sum(len(p) for p in pieces) or 1
+    out, t = [], start
+    for i, p in enumerate(pieces):
+        t2 = end if i == len(pieces) - 1 else t + (end - start) * len(p) / total
+        if cjk and p[-1] in '，、；：' and i == len(pieces) - 1:
+            p = p[:-1] + '。'
+        elif cjk and p[-1] not in SENT_END + '，、；：':
+            p += '。' if i == len(pieces) - 1 else '，'
+        out.append({'start': round(t, 2), 'end': round(t2, 2), 'text': p})
+        t = t2
+    return out
+
+
+def transcribe_file(model, path, language, output, taigi, on_segment=None):
+    """辨識一個音檔，回傳 (segments, 偵測到的語言, 長度秒數)。
+    language: 'auto' 或語言代碼；output: 'orig' | 'en' | 'both'（這裡只處理 en 的 task）。"""
+    kwargs = dict(beam_size=5, vad_filter=True)
+    if taigi:
+        kwargs['language'] = 'zh'           # Breeze 用 Whisper 的 zh token 輸出華語
+    elif language != 'auto':
+        kwargs['language'] = language
+    else:
+        # 自動偵測時先偵測語言，才知道要不要給中文範例提示
+        from faster_whisper import decode_audio
+        lang, _, _ = model.detect_language(decode_audio(path, sampling_rate=16000))
+        kwargs['language'] = lang
+    if output == 'en':
+        kwargs['task'] = 'translate'        # Whisper 內建只能翻成英文
+    elif kwargs['language'] == 'zh' and not taigi:
+        # Breeze 不給提示：實測給了範例提示，時間戳會壞掉（6 段都變成 1.5–1.6 秒）、用字也變
+        kwargs['initial_prompt'] = ZH_PROMPT
+    translating = kwargs.get('task') == 'translate'
+    cjk = kwargs['language'] in ('zh', 'ja', 'yue') and not translating
+    # A3 斷句用逐字時間戳。台語 Breeze 不開：實測開了之後慢很多倍，結尾還會在配樂上
+    # 「編」出不存在的句子（「你就知道有多好笑了吧」），改用 split_by_text 依標點切
+    use_words = not taigi
+    if use_words:
+        kwargs['word_timestamps'] = True
+        # 跳過超過 2 秒沒有人聲時冒出的內容（逐字時間戳模式才有作用）
+        kwargs['hallucination_silence_threshold'] = 2.0
+    segments, info = model.transcribe(path, **kwargs)
+    raw = []
+    for s in segments:                      # 逐段收集，讓進度條動
+        raw.append(s)
+        if on_segment:
+            on_segment(s, info.duration)
+    out = resegment(raw, cjk) if use_words else None
+    if out is None:                         # 沒有逐字時間戳：依標點切開、時間照字數比例
+        out = []
+        for i, s in enumerate(raw):
+            end = s.end
+            # 保險：模型偶爾給出「很長的字、極短的時間」（每字不到 0.05 秒），
+            # 就把結束時間延到下一段開始（最後一段延到音檔結尾）
+            if end - s.start < 0.05 * len(s.text.strip()):
+                end = raw[i + 1].start if i + 1 < len(raw) else (info.duration or end)
+            out.extend(split_by_text(s.start, end, s.text, cjk))
+    return out, info.language, info.duration
+
+
 def translate_segments(model, path, out, src_lang, job):
     """並列模式第二階段：把每段原文對應的那一小段聲音丟去翻成英文，
     英文自然跟原文一句對一句（分開跑兩次辨識的話，兩邊的分段長短對不起來）。"""
@@ -150,40 +341,31 @@ def run_job(job, url, model_name, language, output='orig'):
         model = get_model(model_name)
 
         job.update(status='transcribing', message='語音辨識中…', progress=0)
-        kwargs = dict(beam_size=5, vad_filter=True)
-        if taigi:
-            # Breeze 用 Whisper 的 zh token；實測加不加台語 prompt 結果幾乎一樣，所以不加
-            kwargs['language'] = 'zh'
-        elif language != 'auto':
-            kwargs['language'] = language
         if taigi:
             output = 'orig'           # Breeze 不支援翻譯
-        if output == 'en':
-            # Whisper 內建只能翻成英文；language 是「原音」語言
-            kwargs['task'] = 'translate'
-        elif language in ('zh', 'auto'):
-            # 引導 Whisper 輸出繁體中文＋標點（翻譯時不加，免得中文 prompt 干擾英文輸出）
-            kwargs['initial_prompt'] = '以下是繁體中文的逐字稿，包含標點符號。'
-        segments, info2 = model.transcribe(path, **kwargs)
-        job['language'] = '台語（輸出華語）' if taigi else info2.language
+        # 並列模式：辨識佔進度 0–50%，翻譯佔 50–100%
+        span = 50 if output == 'both' else 99
+        preview = []
+
+        def on_segment(s, total):
+            # 辨識中先顯示原始分段（標點已整理），完成後換成重新斷句的版本
+            preview.append({'start': round(s.start, 2), 'end': round(s.end, 2), 'text': fix_punct(s.text)})
+            job['segments'] = preview
+            job['progress'] = min(span, int(s.end * span / (total or job['duration'] or 1)))
+
+        out, lang, _ = transcribe_file(model, path, language, output, taigi, on_segment)
+        job['segments'] = out
+        job['language'] = '台語（輸出華語）' if taigi else lang
         if output == 'en':
             job['language'] += ' → 英文'
         both = output == 'both'
-        if both and info2.language == 'en':
+        if both and lang == 'en':
             both = False              # 原文就是英文，不用再翻
             job['note'] = '原文已經是英文，所以沒有另外翻譯'
-        # 並列模式：辨識佔進度 0–50%，翻譯佔 50–100%
-        span = 50 if both else 99
-        total = info2.duration or job['duration'] or 1
-        out = []
-        for s in segments:
-            out.append({'start': round(s.start, 2), 'end': round(s.end, 2), 'text': s.text.strip()})
-            job['segments'] = out
-            job['progress'] = min(span, int(s.end * span / total))
         if both and out:
             job.update(message='翻譯成英文中…', progress=50)
             job['language'] += ' ＋ 英文'
-            translate_segments(model, path, out, info2.language, job)
+            translate_segments(model, path, out, lang, job)
         job.update(status='done', message='完成', progress=100)
     except Exception as e:
         job.update(status='error', message=f'失敗：{e}', error=str(e))

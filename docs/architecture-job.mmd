@@ -23,8 +23,9 @@ sequenceDiagram
     Y->>F: 抓公開影片的音軌（FB 多為 m4a，YouTube 多為 webm）
     F-->>Y: 音檔 → %TEMP%/fb_stt
     S->>W: 載入模型（台語固定 Breeze；切換模型時釋放舊的）
-    S->>W: transcribe（輸出＝只要英文時 task=translate）
-    W-->>S: 逐段產生 segments（進度依時間位置）
+    S->>W: 自動偵測時先偵測語言；transcribe（中文給範例提示；只要英文時 task=translate）
+    W-->>S: 逐段產生 segments（進度依時間位置；畫面先顯示原始分段）
+    S->>S: 標點整理（全形、補句尾）＋重新斷句：逐字時間戳切長段；台語依標點切、時間照字數分配
     opt 輸出＝原文＋英文並列（原文不是英文時）
         loop 每一段原文
             S->>W: 該段的聲音片段 → task=translate
