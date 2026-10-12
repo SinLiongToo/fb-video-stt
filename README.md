@@ -307,6 +307,55 @@ Whisper 跟 LLM 是同一類技術（Transformer），裡面也有一小部分�
 1. **雲端 LLM**（Claude、Gemini、OpenAI 等 API）：要付費；送出去的是**辨識後的文字**，不是影片，但仍會離開這台電腦，跟「音檔不離開電腦」的原則要分開考慮。
 2. **本機 LLM**：這台電腦 7.7GB RAM、沒有 GPU，只能跑很小的模型，品質和速度都有限。
 
+## 常見問題（Q&A）
+
+### Q1：只下載音檔，需要開 server.py 嗎？
+
+**用網頁的「只下載音檔」按鈕：要。** 先雙擊 `start.bat`（或執行 `python server.py`）。
+不過只下載音檔時 server.py 很輕：語音模型是「要轉文字時才載入」，只下載不會載入模型，不吃記憶體、不吃 CPU，只是多開一個黑色視窗。
+
+**完全不想開伺服器：直接用命令列 yt-dlp**，效果一樣（只要裝好 Python 和 `requirements.txt` 的套件）：
+
+```bash
+# 原始格式（最快，不用轉檔；FB 是 m4a、YouTube 多是 webm）
+yt-dlp --js-runtimes node -f bestaudio -o "%(title).60s.%(ext)s" "影片網址"
+
+# 轉成 MP3：用 imageio-ffmpeg 附帶的 ffmpeg（先查出它的路徑）
+python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())"
+yt-dlp --js-runtimes node -x --audio-format mp3 --ffmpeg-location "上一行印出的路徑" -o "%(title).60s.%(ext)s" "影片網址"
+```
+
+`--js-runtimes node` 是給 YouTube 用的（YouTube 要 JavaScript 執行環境過驗證，用電腦上的 Node.js），FB 可以省略。
+
+### Q2：用網頁下載，可以不開 server.py 嗎？
+
+**不行。** 網頁（本機開的或 GitHub Pages 線上版都一樣）只是畫面，自己沒辦法下載 FB／YouTube：
+
+1. 瀏覽器的安全限制（CORS）不准網頁直接讀別的網站的檔案。
+2. FB／YouTube 的影片頁不會直接給音檔網址，要先解析網頁（YouTube 還要執行 JavaScript）才找得到——這是 `yt-dlp` 的工作，它是 Python 程式，只能在電腦上跑。
+
+網頁上的按鈕其實是請你電腦上的 server.py 去叫 yt-dlp 下載。兩種做法比較：
+
+| 做法 | 需要 server.py？ | 適合 |
+|---|---|---|
+| 網頁「只下載音檔」 | 要（先開 `start.bat`） | 想先聽、或下載後接著轉文字 |
+| 命令列 yt-dlp（Q1） | 不用 | 只要音檔 |
+
+### Q3：taigi-tts 用 Cloudflare 網址代替本機伺服器，這裡也可以嗎？
+
+**不行。** 姊妹專案 taigi-tts 的 `cloudflare-worker.js` 能代替本機伺服器，是因為萌典音檔的網址很固定
+（`r2-assets.moedict.tw/audio/t/<編號>.mp3`），Worker 只要照編號抓檔、加上 CORS 標頭轉給網頁，很簡單。
+這個專案搬不過去，原因：
+
+1. **要先「找出」音檔網址**：這是 yt-dlp 的工作（解析網頁、YouTube 還要跑 JavaScript 過驗證）。yt-dlp 是很大的 Python 程式，
+   Cloudflare Worker 是輕量 JavaScript 環境，記憶體和執行時間都很少，跑不了。
+2. **YouTube 的音檔網址綁定 IP**：就算在別處解析出網址，下載連結通常只允許「解析它的那台機器」下載，換 Cloudflare 去抓會被拒絕。
+3. **雲端機房 IP 容易被擋**：FB／YouTube 常對 Cloudflare、Colab 這類機房 IP 要求登入或直接封鎖。
+4. **安全**：taigi-tts 的 Worker 刻意只放行固定格式的網址；改成接受任意 FB／YouTube 網址，就容易變成任何人都能用的下載站、被濫用。
+
+Cloudflare 的付費 Containers 理論上能跑 yt-dlp，但第 2、3 點一樣存在。**結論：下載要在自己的電腦上做**（用家裡的網路才不會被擋），
+用 `start.bat` 開網頁，或用 Q1 的命令列。相關評估也見「影片長度與 GPU」（Colab 一樣有 IP 被擋的問題）。
+
 ## 環境需求
 
 Windows、Python 3.12，套件：`flask`、`yt-dlp`、`faster-whisper`、`python-docx`（見 `requirements.txt`）。
@@ -363,6 +412,9 @@ Breeze 實際輸出 vs 貼文原文：
 ## 開發紀錄（Changelog）
 
 > 版本號要在三個地方同步：`index.html` 最上方的 `.version-info`、「❓ 說明」裡的 `#changelogList`、以及這裡。
+
+### [2026-10-12] 文件：README 新增「常見問題（Q&A）」（不影響功能，版本號不變）
+- Q1 只下載音檔要不要開 server.py（含不開伺服器的 yt-dlp 命令列做法）、Q2 網頁能不能不開伺服器下載、Q3 為什麼不能像 taigi-tts 用 Cloudflare Worker 代替伺服器。
 
 ### [2026-10-12] v1.10 — 註記：本機適合短影片
 - README 新增「影片長度與 GPU」：CPU 實測耗時、建議本機只轉短影片；記錄 Colab／GPU 的評估與「決定不整合」（使用者已有自己的 GPU 工具）。
