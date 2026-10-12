@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FB 影片轉文字</title>
+<title>FB／YouTube 影片轉文字</title>
 <style>
   :root {
     --bg: #f6f7f9; --card: #ffffff; --text: #1c1e21; --muted: #65676b;
@@ -74,22 +74,22 @@
 <main>
   <header>
     <div>
-      <h1>FB 影片轉文字</h1>
-      <p class="sub">貼上 Facebook 影片或 Reel 網址，在你自己的電腦上辨識語音，輸出逐字稿。</p>
+      <h1>FB／YouTube 影片轉文字</h1>
+      <p class="sub">貼上 Facebook 或 YouTube 影片網址，在你自己的電腦上辨識語音，輸出逐字稿。</p>
     </div>
     <div class="actions">
       <button id="helpToggle" type="button" title="使用說明" aria-expanded="false" aria-controls="helpPanel">❓ 說明</button>
       <button id="theme" type="button" title="切換深色／淺色模式">🖥 自動</button>
     </div>
   </header>
-  <p class="version-info">版本 v1.6｜最後更新 2026-10-04 18:06（台灣時間）｜完整記錄見「❓ 說明」</p>
+  <p class="version-info">版本 v1.7｜最後更新 2026-10-12 12:50（台灣時間）｜完整記錄見「❓ 說明」</p>
 
   <div class="card help-panel" id="helpPanel" hidden>
     <h2>使用說明</h2>
 
     <h3>開始之前</h3>
     <p>這個頁面要透過本機伺服器開：雙擊資料夾裡的 <code>start.bat</code>（或執行 <code>python server.py</code>），
-      再用瀏覽器開 <code>http://localhost:8792/</code>。直接雙擊 <code>index.html</code> 沒辦法抓 FB 影片。
+      再用瀏覽器開 <code>http://localhost:8792/</code>。直接雙擊 <code>index.html</code> 沒辦法抓影片。
       關掉那個黑色視窗，伺服器就停了。</p>
 
     <h3>線上版（GitHub Pages）</h3>
@@ -102,7 +102,7 @@
 
     <h3>基本步驟</h3>
     <ol>
-      <li>在 Facebook 影片或 Reel 上按「分享 → 複製連結」，貼到網址欄。</li>
+      <li>在 Facebook 影片／Reel，或 YouTube 影片／Shorts 上按「分享 → 複製連結」，貼到網址欄。</li>
       <li>選語言（不確定就用「自動偵測」），再選「輸出」：只要原文、只要英文翻譯，或原文＋英文並列。</li>
       <li>按「開始轉文字」或按 Enter。進度條依序是：下載音軌 → 載入模型 → 辨識中。</li>
       <li>辨識出來的文字會邊跑邊出現，跑完會顯示影片長度、語言、模型、耗時。</li>
@@ -150,17 +150,23 @@
 
     <h3>常見問題</h3>
     <ul>
-      <li><strong>「失敗」或抓不到影片</strong>：只能抓<strong>公開</strong>影片；私人社團、限朋友的影片抓不到。
-        也可能是 Facebook 改版，更新 yt-dlp 試試：<code>pip install -U yt-dlp</code>。</li>
+      <li><strong>「失敗」或抓不到影片</strong>：只能抓<strong>公開</strong>影片；FB 私人社團、限朋友的影片，YouTube 的私人影片都抓不到
+        （YouTube「不公開」影片有網址就可以）。也可能是網站改版，更新 yt-dlp 試試：<code>pip install -U yt-dlp</code>。</li>
+      <li><strong>YouTube 說「請登入確認你不是機器人」</strong>：YouTube 偶爾會擋下載，先更新 yt-dlp
+        （<code>pip install -U yt-dlp</code>），過一陣子再試。</li>
+      <li><strong>影片很長要等多久？</strong>沒有顯示卡的電腦，small 模型大約是影片長度的 1/3 到 1/2，
+        一小時的影片約 20～30 分鐘；「原文＋英文並列」約再 3 倍。長影片建議先用「只要原文」。</li>
       <li><strong>「連線中斷」或「連不到你電腦上的伺服器」</strong>：伺服器的黑色視窗沒開或被關掉了，重新執行 <code>start.bat</code>。</li>
       <li><strong>新功能沒出現</strong>：伺服器要重開才會用到新版程式。在黑色視窗按 Ctrl+C，再執行一次 <code>start.bat</code>。</li>
       <li><strong>「找不到台語模型」</strong>：台語模型要另外下載一次，指令在 README「台語模型」。</li>
       <li><strong>辨識結果有錯字</strong>：語音辨識一定會有錯，請當草稿自己校對；換大一點的模型通常會好一些。</li>
       <li><strong>音檔會被上傳嗎？</strong>不會。下載和辨識都在你自己的電腦上，暫存音檔辨識完就刪掉。</li>
+      <li><strong>有用到 ChatGPT 這類 AI 嗎？</strong>沒有。辨識和翻譯都是電腦上的 Whisper 語音模型，不連任何 AI 服務、不花錢。</li>
     </ul>
 
     <h3>修改日誌</h3>
     <ul id="changelogList">
+      <li><strong>v1.7 — 2026-10-12 12:50</strong>：支援 YouTube 影片／Shorts 網址；FB 標題前的觀看數、按讚數都會去掉。</li>
       <li><strong>v1.6 — 2026-10-04 18:06</strong>：放上 GitHub，提供線上版網頁（仍需在自己電腦上開 start.bat）。</li>
       <li><strong>v1.5 — 2026-10-04 17:17</strong>：「翻成英文」改成「輸出」選單，新增原文＋英文並列；新增下載 .md。</li>
       <li><strong>v1.4 — 2026-10-04 17:00</strong>：語言選單加入法語；新增「翻成英文」。</li>
@@ -173,8 +179,8 @@
   </div>
 
   <div class="card">
-    <label for="url">Facebook 影片網址</label>
-    <input id="url" type="url" placeholder="https://www.facebook.com/reel/1129966309452158">
+    <label for="url">影片網址（Facebook／YouTube）</label>
+    <input id="url" type="url" placeholder="https://www.facebook.com/reel/…　或　https://www.youtube.com/watch?v=…">
     <div class="row">
       <div>
         <label for="lang">語言</label>
@@ -315,7 +321,7 @@ const plainText = () => segments.map(s => withEn(s.text, s)).join(hasEn() ? '\n\
 const tsText = () => segments.map(s => withEn(`[${fmt(s.start)}] ${s.text}`, s)).join(hasEn() ? '\n\n' : '\n');
 const srtText = () => segments.map((s, i) => `${i + 1}\n${srtTime(s.start)} --> ${srtTime(s.end)}\n${withEn(s.text, s)}\n`).join('\n');
 const hasEn = () => segments.some(s => s.en);
-const titleText = () => (lastJob && lastJob.title) ? lastJob.title.slice(0, 80) : 'FB 影片逐字稿';
+const titleText = () => (lastJob && lastJob.title) ? lastJob.title.slice(0, 80) : '影片逐字稿';
 // Markdown：標題、來源、資訊列，每段一個段落；英文用斜體接在下一行（行尾兩個空白＝換行）
 const mdEsc = t => t.replace(/([\\`*_\[\]<>#|])/g, '\\$1');
 function mdText() {
@@ -335,13 +341,19 @@ function download(name, text) {
   a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
-const baseName = () => 'fb_' + (($('url').value.match(/(\d{6,})/) || [])[1] || 'transcript');
+// 下載檔名：YouTube 用影片 ID（yt_XXXXXXXXXXX），FB 用網址裡的數字 ID（fb_123…）
+function baseName() {
+  const u = $('url').value;
+  const yt = u.match(/(?:youtu\.be\/|[?&]v=|\/shorts\/|\/live\/|\/embed\/)([\w-]{11})/);
+  if (yt) return 'yt_' + yt[1];
+  return 'fb_' + ((u.match(/(\d{6,})/) || [])[1] || 'transcript');
+}
 
 async function start() {
   const url = $('url').value.trim();
   if (!url) { setStatus('請先貼上網址', true); return; }
   if (location.protocol === 'file:') {
-    setStatus('請用 python server.py 啟動後，開 http://localhost:8792/（直接雙擊 html 無法抓 FB 影片）', true);
+    setStatus('請用 python server.py 啟動後，開 http://localhost:8792/（直接雙擊 html 無法抓影片）', true);
     return;
   }
   if (ON_PAGES) {

@@ -12,7 +12,7 @@ flowchart TD
         API["/api/transcribe<br/>/api/job/&lt;id&gt;<br/>/api/ping"]
         CORS{"CORS 只允許<br/>sinliongtoo.github.io"}
         JOB["背景工作 run_job()"]
-        YTDLP["yt-dlp<br/>只抓音軌 m4a"]
+        YTDLP["yt-dlp<br/>只抓音軌 m4a／webm<br/>YouTube 用 Node.js 解驗證"]
         TMP[("%TEMP%/fb_stt<br/>暫存音檔，用完刪除")]
         FW["faster-whisper<br/>CPU int8，一次只載入一個模型"]
         DOCX["/api/docx<br/>python-docx"]
@@ -22,7 +22,7 @@ flowchart TD
         end
     end
 
-    FB["Facebook<br/>公開影片／Reel"]
+    FB["Facebook／YouTube<br/>公開影片、Reel、Shorts"]
 
     UI -->|"POST JSON"| CORS --> API --> JOB
     JOB --> YTDLP -->|"下載"| FB

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-FB 影片語音轉文字：本機伺服器。
+FB／YouTube 影片語音轉文字：本機伺服器。
 
-瀏覽器沒辦法直接抓 Facebook 影片（CORS + 需要解析頁面），所以由這支腳本在本機：
-  1. 用 yt-dlp 下載 FB 影片／Reel 的音軌（audio only，不需要 ffmpeg 合併）
+瀏覽器沒辦法直接抓 Facebook／YouTube 影片（CORS + 需要解析頁面），所以由這支腳本在本機：
+  1. 用 yt-dlp 下載 FB 影片／Reel、YouTube 影片／Shorts 的音軌（audio only，不需要 ffmpeg 合併）
   2. 用 faster-whisper 在本機 CPU 辨識成文字
 音檔不會送到任何第三方服務。
 
@@ -28,8 +28,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 WORK_DIR = os.path.join(tempfile.gettempdir(), 'fb_stt')
 os.makedirs(WORK_DIR, exist_ok=True)
 
-# 只接受 facebook / fb.watch 網址，避免變成任意網址下載器
-URL_RE = re.compile(r'^https?://([a-z0-9-]+\.)?(facebook\.com|fb\.watch|fb\.com)/', re.I)
+# 只接受 Facebook／YouTube 網址，避免變成任意網址下載器
+URL_RE = re.compile(
+    r'^https?://([a-z0-9-]+\.)?(facebook\.com|fb\.watch|fb\.com|youtube\.com|youtu\.be)/', re.I)
 MODELS = {'tiny', 'base', 'small', 'medium', 'large-v3-turbo', 'large-v3'}
 
 # 台語（實驗性）：MediaTek-Research/Breeze-ASR-26 的 CTranslate2 int8 版，給 faster-whisper 用。
@@ -102,6 +103,8 @@ def download_audio(url, job):
         'quiet': True,
         'no_warnings': True,
         'progress_hooks': [hook],
+        # YouTube 現在要靠 JavaScript 執行環境解驗證；預設只找 deno，這台電腦有 Node.js，一起開
+        'js_runtimes': {'deno': {}, 'node': {}},
     }
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)
@@ -132,9 +135,9 @@ def run_job(job, url, model_name, language, output='orig'):
     try:
         job.update(status='downloading', message='下載影片音軌中…', progress=0)
         path, info = download_audio(url, job)
-        # FB 的 title 前面會黏「49 reactions | 」之類的計數，去掉
+        # FB 的 title 前面會黏「5.3K views · 109 reactions | 」之類的計數（可能好幾個），全部去掉
         title = info.get('title') or info.get('description') or ''
-        job['title'] = re.sub(r'^[\d.,KkMm萬]+\s*(reactions?|views?|個心情|次觀看)\s*[|·]\s*', '', title)
+        job['title'] = re.sub(r'^(?:[\d.,KkMm萬]+\s*(?:reactions?|views?|個心情|次觀看)\s*[|·]\s*)+', '', title)
         job['duration'] = info.get('duration') or 0
 
         taigi = language == 'nan'
@@ -206,7 +209,7 @@ def transcribe():
     # 預設自動偵測：強制 zh 時，英文影片會被 Whisper 直接「翻譯」成中文
     language = data.get('language') or 'auto'
     if not URL_RE.match(url):
-        return jsonify(error='請輸入 Facebook 影片／Reel 網址'), 400
+        return jsonify(error='請輸入 Facebook 或 YouTube 影片網址'), 400
     if model_name not in MODELS:
         return jsonify(error='未知的模型'), 400
     if language not in ('auto', 'zh', 'en', 'ja', 'fr', 'nan'):
@@ -243,7 +246,7 @@ def export_docx():
     # 中文字型要另外設 eastAsia，不然 Word 會用預設的新細明體以外字型亂套
     style.element.rPr.rFonts.set(qn('w:eastAsia'), 'Microsoft JhengHei')
 
-    doc.add_heading(data.get('title') or 'FB 影片逐字稿', level=1)
+    doc.add_heading(data.get('title') or '影片逐字稿', level=1)
     for line in (data.get('url'), data.get('meta')):
         if line:
             p = doc.add_paragraph()
@@ -283,7 +286,7 @@ def job_status(job_id):
 
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8792
-    print(f'FB 影片語音轉文字 -> http://localhost:{port}/   （Ctrl+C 結束）')
+    print(f'FB／YouTube 影片轉文字 -> http://localhost:{port}/   （Ctrl+C 結束）')
     app.run(host='127.0.0.1', port=port, threaded=True)
 
 

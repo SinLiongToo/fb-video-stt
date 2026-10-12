@@ -1,6 +1,6 @@
 ---
 name: run-fb-stt
-description: Launch, test, and extend the FB 影片轉文字 (Facebook video/Reel speech-to-text) tool in this repo — index.html + Flask server.py using yt-dlp + faster-whisper locally. Use whenever asked to run, test, screenshot, debug, or change index.html / server.py / start.bat here.
+description: Launch, test, and extend the FB／YouTube 影片轉文字 (Facebook / YouTube video speech-to-text) tool in this repo — index.html + Flask server.py using yt-dlp + faster-whisper locally. Use whenever asked to run, test, screenshot, debug, or change index.html / server.py / start.bat here.
 ---
 
 # FB 影片轉文字 (FB video → transcript)
@@ -24,8 +24,12 @@ TXT / SRT / copy are built client-side; only Word goes through the server.
 
 ## Hard rules
 
-- **`URL_RE` in server.py only allows facebook.com / fb.watch / fb.com.** Don't widen it to
-  arbitrary URLs — that turns the local server into an open downloader.
+- **`URL_RE` in server.py only allows facebook.com / fb.watch / fb.com / youtube.com /
+  youtu.be** (any subdomain). Don't widen it to arbitrary URLs — that turns the local server
+  into an open downloader. Adding a site = URL_RE + page text/placeholder + help panel +
+  diagrams (`architecture-overview` FB node, `architecture-job` participant F) + `baseName()`.
+- **No LLM at runtime** (user decided 2026-10-12, README「有沒有用到 LLM？」). Don't add an
+  LLM API or local LLM without asking — it changes cost and the privacy story.
 - **Default language is `auto`, not `zh`.** Verified with the sample reel (English speech):
   forcing `zh` makes Whisper *translate* into wrong Chinese instead of transcribing. `zh`
   adds `initial_prompt` asking for 繁體中文 + punctuation (also applied on `auto`, harmless for
@@ -150,6 +154,23 @@ both themes; confirm `.version-info` version equals the top `#changelogList` ent
 - Committed files: index.html, server.py, start.bat, requirements.txt, README.md,
   .gitignore, .nojekyll, this skill. Keep personal paths out of README (use `%USERPROFILE%`).
 - Commits end with the `Co-Authored-By` line from the session's attribution reminder.
+
+## YouTube
+
+- yt-dlp option `js_runtimes: {'deno': {}, 'node': {}}` in `download_audio` — YouTube needs a
+  JS runtime; this machine has Node.js (no deno). Without it: warning "No supported
+  JavaScript runtime … some formats may be missing".
+- YouTube bestaudio is usually format 251 webm/opus (FB: m4a); PyAV decodes it, no ffmpeg.
+- `noplaylist: True` — `watch?v=…&list=…` downloads only that video.
+- Test video: "Me at the zoo" `https://www.youtube.com/watch?v=jNQXAC9IVRw` (19 s English).
+  Expect title `Me at the zoo`, language `en`, first line "Alright, so here we are, one of
+  the elephants.", 4 segments, 9–23 s with `small`. Also try `youtu.be/…` and `shorts/…`.
+  Download filename `yt_jNQXAC9IVRw.*` (`baseName()` picks the 11-char ID).
+- FB titles can carry several counters (`5.3K views · 109 reactions | `); the strip regex
+  is a repeated group — keep it that way.
+- If YouTube says "Sign in to confirm you're not a bot": `pip install -U yt-dlp` first.
+- Not done yet (user may ask): prefer YouTube's existing subtitles over ASR; a cancel
+  button for long videos.
 
 ## Languages and translate
 

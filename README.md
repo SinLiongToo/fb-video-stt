@@ -1,8 +1,8 @@
-# FB 影片轉文字（FB video → 逐字稿）
+# FB／YouTube 影片轉文字（video → 逐字稿）
 
-貼上 Facebook 影片／Reel 網址，在**自己的電腦上**把語音辨識成文字，可以複製或下載成 .txt／.srt／.md／Word，
+貼上 Facebook 影片／Reel 或 YouTube 影片／Shorts 網址，在**自己的電腦上**把語音辨識成文字，可以複製或下載成 .txt／.srt／.md／Word，
 也可以翻成英文或原文＋英文並列。
-音檔不會送到任何第三方服務（只有 yt-dlp 去 Facebook 抓公開影片的音軌）。
+音檔不會送到任何第三方服務（只有 yt-dlp 去 Facebook／YouTube 抓公開影片的音軌），也**沒有用到 LLM**（見「有沒有用到 LLM？」）。
 
 - 線上版網頁：**https://sinliongtoo.github.io/fb-video-stt/** （仍需在自己電腦上開 `start.bat`，見下方）
 - 原始碼：https://github.com/SinLiongToo/fb-video-stt
@@ -24,7 +24,7 @@ pip install -r requirements.txt
 3. 貼上網址 → 選語言、輸出方式 → 按「開始轉文字」
 4. 完成後可：勾/不勾「顯示時間碼」、複製、下載 .txt／.srt（字幕）／.md／Word
 
-> 直接雙擊 `index.html` 不能用：瀏覽器本身沒辦法抓 FB 影片（CORS），一定要透過 `server.py`。
+> 直接雙擊 `index.html` 不能用：瀏覽器本身沒辦法抓 FB／YouTube 影片（CORS），一定要透過 `server.py`。
 
 ### 線上版（GitHub Pages）怎麼運作
 
@@ -94,7 +94,7 @@ flowchart TD
         API["/api/transcribe<br/>/api/job/&lt;id&gt;<br/>/api/ping"]
         CORS{"CORS 只允許<br/>sinliongtoo.github.io"}
         JOB["背景工作 run_job()"]
-        YTDLP["yt-dlp<br/>只抓音軌 m4a"]
+        YTDLP["yt-dlp<br/>只抓音軌 m4a／webm<br/>YouTube 用 Node.js 解驗證"]
         TMP[("%TEMP%/fb_stt<br/>暫存音檔，用完刪除")]
         FW["faster-whisper<br/>CPU int8，一次只載入一個模型"]
         DOCX["/api/docx<br/>python-docx"]
@@ -104,7 +104,7 @@ flowchart TD
         end
     end
 
-    FB["Facebook<br/>公開影片／Reel"]
+    FB["Facebook／YouTube<br/>公開影片、Reel、Shorts"]
 
     UI -->|"POST JSON"| CORS --> API --> JOB
     JOB --> YTDLP -->|"下載"| FB
@@ -126,7 +126,7 @@ sequenceDiagram
     participant P as 網頁 index.html
     participant S as server.py
     participant Y as yt-dlp
-    participant F as Facebook
+    participant F as Facebook／YouTube
     participant W as faster-whisper
 
     U->>P: 貼網址、選語言／模型／輸出，按「開始轉文字」
@@ -135,14 +135,14 @@ sequenceDiagram
         S-->>P: ok（沒開 start.bat → 紅色提醒，停止）
     end
     P->>S: POST /api/transcribe {url, model, language, output}
-    S->>S: 檢查：只收 FB 網址、語言／輸出白名單、必須是 JSON
+    S->>S: 檢查：只收 FB／YouTube 網址、語言／輸出白名單、必須是 JSON
     S-->>P: {id}，背景執行緒開始工作
     loop 每 1 秒
         P->>S: GET /api/job/{id}
         S-->>P: 狀態、進度 %、目前已辨識的 segments
     end
     S->>Y: 下載音軌（進度 0–100%）
-    Y->>F: 抓公開影片的 m4a
+    Y->>F: 抓公開影片的音軌（FB 多為 m4a，YouTube 多為 webm）
     F-->>Y: 音檔 → %TEMP%/fb_stt
     S->>W: 載入模型（台語固定 Breeze；切換模型時釋放舊的）
     S->>W: transcribe（輸出＝只要英文時 task=translate）
@@ -189,6 +189,35 @@ flowchart TD
     PER --> OUT
     TGOUT --> OUT
 ```
+
+## 有沒有用到 LLM？
+
+**沒有。** 工具執行時不會呼叫 ChatGPT、Claude、Gemini 這類大型語言模型（LLM），也不用任何雲端 API、不花錢、不扣 token。
+
+| 步驟 | 用什麼 | 是不是 LLM |
+|---|---|---|
+| 下載影片 | yt-dlp | 一般程式，不是 AI |
+| 語音轉文字 | Whisper（OpenAI 開源，faster-whisper 執行） | 不是。專門的語音辨識模型，最大約 15 億參數，只會「聽聲音寫字」 |
+| 台語 → 華語 | Breeze-ASR-26（聯發科） | 不是。用台語資料加強過的 Whisper |
+| 翻成英文 | Whisper 內建的 translate 功能 | 不是，沒有另外接 LLM |
+| 匯出 Word／.md／.srt | python-docx、網頁 JavaScript | 不是 AI |
+
+Whisper 跟 LLM 是同一類技術（Transformer），裡面也有一小部分在「猜下一個字」，所以會補標點、修順句子；但它不會聊天、摘要或回答問題。
+唯一用到 LLM 的是**開發階段**：程式是 Claude（Claude Code）協助寫的，工具執行時跟它無關。
+
+### 之後如果要加 LLM（目前決定先不加，2026-10-12）
+
+能多做的事：
+
+- **翻成中文**（Whisper 只能翻成英文）
+- **摘要重點**（例如一小時影片濃縮成十點）
+- **修正錯字、統一用語**（人名、專有名詞）
+- **華語 → 台語正字**：Breeze 輸出華語後，再請 LLM 轉成台語漢字（仍需人工校對）
+
+代價，二選一：
+
+1. **雲端 LLM**（Claude、Gemini、OpenAI 等 API）：要付費；送出去的是**辨識後的文字**，不是影片，但仍會離開這台電腦，跟「音檔不離開電腦」的原則要分開考慮。
+2. **本機 LLM**：這台電腦 7.7GB RAM、沒有 GPU，只能跑很小的模型，品質和速度都有限。
 
 ## 環境需求
 
@@ -246,6 +275,17 @@ Breeze 實際輸出 vs 貼文原文：
 ## 開發紀錄（Changelog）
 
 > 版本號要在三個地方同步：`index.html` 最上方的 `.version-info`、「❓ 說明」裡的 `#changelogList`、以及這裡。
+
+### [2026-10-12] v1.7 — 支援 YouTube
+- `server.py` 的網址白名單加入 `youtube.com`（含 `www.`、`m.`）與 `youtu.be`：一般影片、Shorts、直播回放都可以；網址裡帶 `&list=` 也只抓那一支（`noplaylist`）。
+- YouTube 現在要靠 JavaScript 執行環境過驗證：yt-dlp 預設只找 deno，這台沒有，改成同時開 `node`（`js_runtimes: {deno, node}`），用已安裝的 Node.js。沒開的話 yt-dlp 會警告「部分格式可能缺少」。
+- YouTube 最佳音軌通常是 webm／opus（FB 是 m4a），faster-whisper 內建的 PyAV 直接能解，不需要 ffmpeg。
+- 下載檔名：YouTube 用影片 ID（`yt_jNQXAC9IVRw.md`），FB 照舊用數字 ID（`fb_…`）。
+- 修正：FB 標題前面可能有好幾個計數（`5.3K views · 109 reactions | `），之前只去掉一個，現在全部去掉。
+- 畫面標題改成「FB／YouTube 影片轉文字」；說明面板加 YouTube 的常見問題（機器人驗證、長影片要等多久）；架構圖同步更新。
+- README 新增「有沒有用到 LLM？」：目前沒有用；記錄之後可以加的功能與代價（決定先不加）。
+- 實測：YouTube「Me at the zoo」（https://www.youtube.com/watch?v=jNQXAC9IVRw ，19 秒英文），`watch?v=…&list=…`、`youtu.be/…`、`shorts/…` 三種網址都正確辨識，small 模型 9～23 秒；FB 英文 reel 回歸測試正常。
+- 還沒做：先用 YouTube 現成字幕（比辨識快、創作者上傳的通常更準）、長影片的「取消」按鈕。
 
 ### [2026-10-04] 文件：架構圖（不影響功能，版本號不變）
 - README 新增「架構圖」：整體架構、一次轉文字的流程（時序圖）、語言與輸出選項的決策流程。

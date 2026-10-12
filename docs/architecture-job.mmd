@@ -4,7 +4,7 @@ sequenceDiagram
     participant P as 網頁 index.html
     participant S as server.py
     participant Y as yt-dlp
-    participant F as Facebook
+    participant F as Facebook／YouTube
     participant W as faster-whisper
 
     U->>P: 貼網址、選語言／模型／輸出，按「開始轉文字」
@@ -13,14 +13,14 @@ sequenceDiagram
         S-->>P: ok（沒開 start.bat → 紅色提醒，停止）
     end
     P->>S: POST /api/transcribe {url, model, language, output}
-    S->>S: 檢查：只收 FB 網址、語言／輸出白名單、必須是 JSON
+    S->>S: 檢查：只收 FB／YouTube 網址、語言／輸出白名單、必須是 JSON
     S-->>P: {id}，背景執行緒開始工作
     loop 每 1 秒
         P->>S: GET /api/job/{id}
         S-->>P: 狀態、進度 %、目前已辨識的 segments
     end
     S->>Y: 下載音軌（進度 0–100%）
-    Y->>F: 抓公開影片的 m4a
+    Y->>F: 抓公開影片的音軌（FB 多為 m4a，YouTube 多為 webm）
     F-->>Y: 音檔 → %TEMP%/fb_stt
     S->>W: 載入模型（台語固定 Breeze；切換模型時釋放舊的）
     S->>W: transcribe（輸出＝只要英文時 task=translate）
