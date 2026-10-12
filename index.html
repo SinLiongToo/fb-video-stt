@@ -66,6 +66,11 @@
   .seg .t { color: var(--ts); font-variant-numeric: tabular-nums; font-size: .85rem; flex: 0 0 auto; padding-top: 2px; }
   .meta { color: var(--muted); font-size: .85rem; margin-bottom: 8px; }
   .hidden { display: none; }
+  button.ghost.tall { padding: 10px 18px; }
+  #player { width: 100%; margin: 4px 0 10px; }
+  a.btnlink { display: inline-block; padding: 6px 12px; border: 1px solid var(--border); border-radius: 8px;
+    color: var(--accent); text-decoration: none; font-size: .95rem; }
+  a.btnlink:hover { border-color: var(--accent); }
   .seg .en { display: block; color: var(--muted); font-size: .9rem; font-style: italic; }
   .hint { font-size: .82rem; color: var(--muted); margin-top: 10px; }
 </style>
@@ -82,7 +87,7 @@
       <button id="theme" type="button" title="切換深色／淺色模式">🖥 自動</button>
     </div>
   </header>
-  <p class="version-info">版本 v1.8｜最後更新 2026-10-12 13:38（台灣時間）｜完整記錄見「❓ 說明」</p>
+  <p class="version-info">版本 v1.9｜最後更新 2026-10-12 14:41（台灣時間）｜完整記錄見「❓ 說明」</p>
 
   <div class="card help-panel" id="helpPanel" hidden>
     <h2>使用說明</h2>
@@ -104,7 +109,7 @@
     <ol>
       <li>在 Facebook 影片／Reel，或 YouTube 影片／Shorts 上按「分享 → 複製連結」，貼到網址欄。</li>
       <li>選語言（不確定就用「自動偵測」），再選「輸出」：只要原文、只要英文翻譯，或原文＋英文並列。</li>
-      <li>按「開始轉文字」或按 Enter。進度條依序是：下載音軌 → 載入模型 → 辨識中。</li>
+      <li>按「開始轉文字」或按 Enter。進度條依序是：下載音軌 → 載入模型 → 辨識中。只想要聲音的話，改按「只下載音檔」（見下方）。</li>
       <li>辨識出來的文字會邊跑邊出現，跑完會顯示影片長度、語言、模型、耗時。</li>
     </ol>
 
@@ -132,6 +137,15 @@
       要翻譯請用 small、medium 或 large-v3；<strong>large-v3-turbo 沒學過翻譯</strong>，常常還是輸出原文。
       台語模式不能翻譯。</p>
 
+    <h3>只下載音檔</h3>
+    <p>貼好網址後按「<strong>⬇ 只下載音檔</strong>」，會出現一個播放器，可以先聽聽看：</p>
+    <ul>
+      <li><strong>格式</strong>：MP3 任何手機、電腦都能播（多花幾秒轉檔）；原始格式最快，FB 是 m4a、YouTube 多是 webm（有些播放器不支援 webm）。</li>
+      <li><strong>⬇ 下載音檔</strong>：存到你的電腦，檔名是影片標題。</li>
+      <li><strong>用這個音檔轉成文字</strong>：用上面選的語言、模型、輸出方式直接轉，不用再下載一次。</li>
+      <li>音檔暫存在你電腦上 <strong>2 小時</strong>，之後自動清掉；要留著請先按「下載音檔」。</li>
+    </ul>
+
     <h3>模型怎麼選</h3>
     <p>越大越準、也越慢。這台電腦沒有顯示卡（GPU），建議 <strong>small</strong>。
       第一次用某個模型會先下載（幾百 MB 到 3GB），之後就不用。
@@ -158,6 +172,7 @@
         一小時的影片約 20～30 分鐘；「原文＋英文並列」約再 3 倍。長影片建議先用「只要原文」。</li>
       <li><strong>「連線中斷」或「連不到你電腦上的伺服器」</strong>：伺服器的黑色視窗沒開或被關掉了，重新執行 <code>start.bat</code>。</li>
       <li><strong>新功能沒出現</strong>：伺服器要重開才會用到新版程式。在黑色視窗按 Ctrl+C，再執行一次 <code>start.bat</code>。</li>
+      <li><strong>「音檔不存在或已過期」</strong>：下載的音檔只保留 2 小時，或伺服器重開過，請再按一次「只下載音檔」。</li>
       <li><strong>「找不到台語模型」</strong>：台語模型要另外下載一次，指令在 README「台語模型」。</li>
       <li><strong>辨識結果有錯字</strong>：語音辨識一定會有錯，請當草稿自己校對；換大一點的模型通常會好一些。</li>
       <li><strong>標點和斷句</strong>：程式會自動把中文標點改成全形、在停頓處補逗號或句號，並把太長的段落切成一行字幕的長度（中文約 22 字、7 秒內）。標點是依停頓推測的，不一定完全符合語意，請當草稿校對。辨識中先顯示原始分段，<strong>完成時會重新排過一次</strong>，行數變多是正常的。</li>
@@ -167,6 +182,7 @@
 
     <h3>修改日誌</h3>
     <ul id="changelogList">
+      <li><strong>v1.9 — 2026-10-12 14:41</strong>：新增「只下載音檔」（MP3 或原始格式），可以先聽、下載，再決定要不要轉成文字。</li>
       <li><strong>v1.8 — 2026-10-12 13:38</strong>：改善中文標點（全形、補句尾）與斷句（太長的段落自動切成字幕長度），台語模式也有標點了。</li>
       <li><strong>v1.7 — 2026-10-12 12:50</strong>：支援 YouTube 影片／Shorts 網址；FB 標題前的觀看數、按讚數都會去掉。</li>
       <li><strong>v1.6 — 2026-10-04 18:06</strong>：放上 GitHub，提供線上版網頁（仍需在自己電腦上開 start.bat）。</li>
@@ -215,6 +231,16 @@
       </div>
       <div style="flex:0 0 auto"><button id="go">開始轉文字</button></div>
     </div>
+    <div class="row">
+      <div>
+        <label for="audioFmt">或是只要音檔</label>
+        <select id="audioFmt">
+          <option value="mp3" selected>MP3（任何裝置都能播）</option>
+          <option value="orig">原始格式（最快；FB 是 m4a、YouTube 多是 webm）</option>
+        </select>
+      </div>
+      <div style="flex:0 0 auto"><button class="ghost tall" id="goAudio">⬇ 只下載音檔</button></div>
+    </div>
     <p class="hint hidden" id="turboNote">large-v3-turbo 沒有學過翻譯，常常還是輸出原文；要英文翻譯請改用 small、medium 或 large-v3。</p>
     <p class="hint hidden" id="taigiNote">台語固定使用聯發科 Breeze-ASR-26，模型選單不適用。
       它聽得懂台語，但<strong>輸出的是華語漢字</strong>（意思對、用字是華語），不是台語正字逐字稿。
@@ -225,6 +251,18 @@
       下載與辨識要在你自己的電腦上跑：請先雙擊 <code>start.bat</code>（或執行 <code>python server.py</code>），
       再重新整理這一頁。第一次瀏覽器可能會詢問「允許存取本機網路裝置」，請按允許。</p>
     <p class="hint">需要先在本機啟動 <code>python server.py</code>（或雙擊 <code>start.bat</code>）。只能抓公開影片。</p>
+  </div>
+
+  <div class="card hidden" id="audioCard">
+    <div class="meta" id="audioMeta"></div>
+    <audio id="player" controls preload="metadata"></audio>
+    <div class="toolbar">
+      <a class="btnlink" id="dlAudio" href="#">⬇ 下載音檔</a>
+      <span class="spacer"></span>
+      <button id="audioToText">用這個音檔轉成文字</button>
+    </div>
+    <p class="hint">「轉成文字」會用上面選的語言、模型、輸出方式，直接用這個音檔，不用再下載一次。
+      音檔暫存在你的電腦上 2 小時，之後自動清掉；要留著請先按「下載音檔」存起來。</p>
   </div>
 
   <div class="card hidden" id="result">
@@ -351,9 +389,16 @@ function baseName() {
   return 'fb_' + ((u.match(/(\d{6,})/) || [])[1] || 'transcript');
 }
 
-async function start() {
+// 工作進行中三個按鈕都停用，避免同時跑兩個（CPU 只有一顆，模型也只載入一個）
+function setBusy(b) {
+  for (const id of ['go', 'goAudio', 'audioToText']) $(id).disabled = b;
+}
+let currentAudio = null;   // 最近一次「只下載音檔」的工作（給「用這個音檔轉成文字」用）
+
+// kind：'text' 用網址轉文字／'audio' 只下載音檔／'audioText' 用已下載的音檔轉文字
+async function start(kind = 'text') {
   const url = $('url').value.trim();
-  if (!url) { setStatus('請先貼上網址', true); return; }
+  if (kind !== 'audioText' && !url) { setStatus('請先貼上網址', true); return; }
   if (location.protocol === 'file:') {
     setStatus('請用 python server.py 啟動後，開 http://localhost:8792/（直接雙擊 html 無法抓影片）', true);
     return;
@@ -362,21 +407,37 @@ async function start() {
     await checkServer();
     if (!$('serverNote').classList.contains('hidden')) { setStatus(SERVER_DOWN_MSG, true); return; }
   }
-  $('go').disabled = true;
-  segments = []; $('result').classList.add('hidden');
+  setBusy(true);
+  if (kind !== 'audio') { segments = []; $('result').classList.add('hidden'); }
+  if (kind === 'audio') $('audioCard').classList.add('hidden');
   setStatus('送出中…'); setProgress(0);
+  const textOpts = { model: $('model').value, language: $('lang').value,
+                     output: $('output').disabled ? 'orig' : $('output').value };
+  const [path, body] = kind === 'audio' ? ['/api/audio', { url, fmt: $('audioFmt').value }]
+    : kind === 'audioText' ? ['/api/transcribe', { audio_id: currentAudio.id, ...textOpts }]
+    : ['/api/transcribe', { url, ...textOpts }];
   try {
-    const r = await fetch(API + '/api/transcribe', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, model: $('model').value, language: $('lang').value,
-                             output: $('output').disabled ? 'orig' : $('output').value })
+    const r = await fetch(API + path, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
     });
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || r.statusText);
     poll(j.id);
   } catch (e) {
-    setStatus('錯誤：' + e.message, true); setProgress(null); $('go').disabled = false;
+    setStatus('錯誤：' + e.message, true); setProgress(null); setBusy(false);
   }
+}
+
+const fmtSize = n => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+function showAudio(j) {
+  currentAudio = j;
+  const src = `${API}/api/audio/${j.id}`;
+  $('player').src = src;
+  $('dlAudio').href = src + '?dl=1';
+  $('dlAudio').setAttribute('download', j.audio.filename);
+  $('audioMeta').textContent = [j.title && j.title.slice(0, 80), j.duration && `長度 ${fmt(j.duration)}`,
+    `${j.audio.ext.slice(1).toUpperCase()} ・ ${fmtSize(j.audio.size)}`, `耗時 ${j.elapsed}s`].filter(Boolean).join(' ・ ');
+  $('audioCard').classList.remove('hidden');
 }
 
 function poll(id) {
@@ -391,8 +452,11 @@ function poll(id) {
         segments = j.segments; $('result').classList.remove('hidden'); render();
       }
       if (j.status === 'done' || j.status === 'error') {
-        $('go').disabled = false;
-        if (j.status === 'done') {
+        setBusy(false);
+        if (j.status === 'done' && j.kind === 'audio') {
+          setProgress(null);
+          showAudio(j);
+        } else if (j.status === 'done') {
           setProgress(null);
           lastJob = j;
           $('meta').textContent = [j.title && j.title.slice(0, 80), j.duration && `長度 ${fmt(j.duration)}`,
@@ -403,7 +467,7 @@ function poll(id) {
       }
       poll(id);
     } catch (e) {
-      setStatus('連線中斷：' + e.message, true); $('go').disabled = false;
+      setStatus('連線中斷：' + e.message, true); setBusy(false);
     }
   }, 1000);
 }
@@ -430,8 +494,10 @@ $('output').onchange = syncLang;
 checkServer();
 syncLang();
 
-$('go').onclick = start;
-$('url').addEventListener('keydown', e => { if (e.key === 'Enter') start(); });
+$('go').onclick = () => start('text');
+$('goAudio').onclick = () => start('audio');
+$('audioToText').onclick = () => start('audioText');
+$('url').addEventListener('keydown', e => { if (e.key === 'Enter') start('text'); });
 $('showTs').onchange = render;
 $('copy').onclick = async () => {
   await navigator.clipboard.writeText($('showTs').checked ? tsText() : plainText());

@@ -321,15 +321,84 @@ def translate_segments(model, path, out, src_lang, job):
         job['progress'] = 50 + int((i + 1) * 49 / len(out))
 
 
-def run_job(job, url, model_name, language, output='orig'):
-    path = None
+# ── 只下載音檔（v1.9）────────────────────────────────────────────────────────
+# 「只下載音檔」的檔案留在 WORK_DIR 讓使用者播放／下載，之後也能直接拿去轉文字（不用再下載一次）。
+# 留 KEEP_SECONDS 秒，每次開新工作、伺服器啟動時清掉過期的。
+KEEP_SECONDS = 2 * 60 * 60
+AUDIO_MIME = {'.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.webm': 'audio/webm',
+              '.opus': 'audio/ogg', '.ogg': 'audio/ogg', '.mp4': 'video/mp4'}
+
+
+def cleanup_old_audio():
+    now = time.time()
+    for name in os.listdir(WORK_DIR):
+        p = os.path.join(WORK_DIR, name)
+        try:
+            if os.path.isfile(p) and now - os.path.getmtime(p) > KEEP_SECONDS:
+                os.remove(p)
+        except OSError:
+            pass
+
+
+def clean_title(info):
+    # FB 的 title 前面會黏「5.3K views · 109 reactions | 」之類的計數（可能好幾個），全部去掉
+    title = info.get('title') or info.get('description') or ''
+    return re.sub(r'^(?:[\d.,KkMm萬]+\s*(?:reactions?|views?|個心情|次觀看)\s*[|·]\s*)+', '', title)
+
+
+def safe_filename(title, fallback):
+    """下載檔名：用影片標題（保留中文），去掉 Windows 不能用的字元，最多 60 字。"""
+    name = re.sub(r'[\\/:*?"<>|\r\n\t]+', ' ', title or '').strip(' .')
+    name = re.sub(r'\s+', ' ', name)[:60].strip(' .')
+    return name or fallback
+
+
+def to_mp3(path, job):
+    """用 imageio-ffmpeg 附帶的 ffmpeg 轉成 MP3（192 kbps），成功就刪掉原檔。"""
+    import subprocess
+    import imageio_ffmpeg
+    out = os.path.splitext(path)[0] + '.mp3'
+    job.update(status='converting', message='轉成 MP3 中…', progress=0)
+    r = subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), '-y', '-hide_banner', '-loglevel', 'error',
+                        '-i', path, '-vn', '-c:a', 'libmp3lame', '-b:a', '192k', out],
+                       capture_output=True, text=True)
+    if r.returncode != 0 or not os.path.isfile(out):
+        raise RuntimeError('MP3 轉檔失敗：' + (r.stderr.strip()[-200:] or '未知原因'))
+    os.remove(path)
+    return out
+
+
+def run_audio_job(job, url, fmt):
+    """只下載音檔：下載（必要時轉 MP3）後留著，給 GET /api/audio/<id> 播放／下載。"""
     try:
         job.update(status='downloading', message='下載影片音軌中…', progress=0)
         path, info = download_audio(url, job)
-        # FB 的 title 前面會黏「5.3K views · 109 reactions | 」之類的計數（可能好幾個），全部去掉
-        title = info.get('title') or info.get('description') or ''
-        job['title'] = re.sub(r'^(?:[\d.,KkMm萬]+\s*(?:reactions?|views?|個心情|次觀看)\s*[|·]\s*)+', '', title)
+        job['title'] = clean_title(info)
         job['duration'] = info.get('duration') or 0
+        if fmt == 'mp3' and not path.lower().endswith('.mp3'):
+            path = to_mp3(path, job)
+        ext = os.path.splitext(path)[1].lower()
+        job['audio'] = {'path': path, 'ext': ext, 'size': os.path.getsize(path),
+                        'filename': safe_filename(job['title'], job['id']) + ext}
+        job.update(status='done', message='音檔已下載', progress=100)
+    except Exception as e:
+        job.update(status='error', message=f'失敗：{e}', error=str(e))
+    finally:
+        job['elapsed'] = round(time.time() - job['started'], 1)
+
+
+def run_job(job, url, model_name, language, output='orig', source=None):
+    """轉文字。source 是「只下載音檔」的工作：有的話直接用它的檔案，不再下載，也不刪檔。"""
+    path = None
+    try:
+        if source:
+            path = source['audio']['path']
+            job['title'], job['duration'] = source.get('title', ''), source.get('duration', 0)
+        else:
+            job.update(status='downloading', message='下載影片音軌中…', progress=0)
+            path, info = download_audio(url, job)
+            job['title'] = clean_title(info)
+            job['duration'] = info.get('duration') or 0
 
         taigi = language == 'nan'
         if taigi:
@@ -370,7 +439,8 @@ def run_job(job, url, model_name, language, output='orig'):
     except Exception as e:
         job.update(status='error', message=f'失敗：{e}', error=str(e))
     finally:
-        if path and os.path.exists(path):
+        # 自己下載的暫存音檔用完就刪；「只下載音檔」留下來的檔案不刪（給使用者下載／再轉）
+        if path and not source and os.path.exists(path):
             try:
                 os.remove(path)
             except OSError:
@@ -383,6 +453,45 @@ def index():
     return send_from_directory(HERE, 'index.html')
 
 
+def audio_source(audio_id):
+    """取「只下載音檔」的工作；檔案過期被清掉就回 None。"""
+    src = jobs.get(audio_id or '')
+    if src and src.get('audio') and os.path.isfile(src['audio']['path']):
+        return src
+    return None
+
+
+@app.post('/api/audio')
+def start_audio():
+    """只下載音檔。fmt: orig 原始格式（m4a／webm，最快）／ mp3（相容性最好）。"""
+    data = request.get_json(silent=True) or {}
+    url = (data.get('url') or '').strip()
+    fmt = data.get('fmt') or 'orig'
+    if not URL_RE.match(url):
+        return jsonify(error='請輸入 Facebook 或 YouTube 影片網址'), 400
+    if fmt not in ('orig', 'mp3'):
+        return jsonify(error='未知的音檔格式'), 400
+    cleanup_old_audio()
+    job_id = uuid.uuid4().hex[:12]
+    job = {'id': job_id, 'kind': 'audio', 'status': 'queued', 'message': '排隊中…', 'progress': 0,
+           'started': time.time(), 'url': url}
+    jobs[job_id] = job
+    threading.Thread(target=run_audio_job, args=(job, url, fmt), daemon=True).start()
+    return jsonify(id=job_id)
+
+
+@app.get('/api/audio/<job_id>')
+def get_audio(job_id):
+    """播放（預設）或下載（?dl=1）已下載的音檔。路徑只從工作紀錄來，不吃使用者給的路徑。"""
+    from flask import send_file
+    src = audio_source(job_id)
+    if not src:
+        return jsonify(error='音檔不存在或已過期（下載後保留 2 小時），請重新下載'), 404
+    a = src['audio']
+    return send_file(a['path'], mimetype=AUDIO_MIME.get(a['ext'], 'application/octet-stream'),
+                     as_attachment=request.args.get('dl') == '1', download_name=a['filename'])
+
+
 @app.post('/api/transcribe')
 def transcribe():
     data = request.get_json(silent=True) or {}
@@ -390,7 +499,14 @@ def transcribe():
     model_name = data.get('model') or 'small'
     # 預設自動偵測：強制 zh 時，英文影片會被 Whisper 直接「翻譯」成中文
     language = data.get('language') or 'auto'
-    if not URL_RE.match(url):
+    # audio_id：用「只下載音檔」已經下載好的檔案轉文字，不用再下載
+    source = None
+    if data.get('audio_id'):
+        source = audio_source(data['audio_id'])
+        if not source:
+            return jsonify(error='音檔不存在或已過期（下載後保留 2 小時），請重新下載'), 400
+        url = source['url']
+    elif not URL_RE.match(url):
         return jsonify(error='請輸入 Facebook 或 YouTube 影片網址'), 400
     if model_name not in MODELS:
         return jsonify(error='未知的模型'), 400
@@ -400,11 +516,13 @@ def transcribe():
     output = data.get('output') or ('en' if data.get('translate') else 'orig')
     if output not in ('orig', 'en', 'both'):
         return jsonify(error='未知的輸出方式'), 400
+    cleanup_old_audio()
     job_id = uuid.uuid4().hex[:12]
-    job = {'id': job_id, 'status': 'queued', 'message': '排隊中…', 'progress': 0,
+    job = {'id': job_id, 'kind': 'text', 'status': 'queued', 'message': '排隊中…', 'progress': 0,
            'segments': [], 'started': time.time(), 'url': url, 'model': model_name}
     jobs[job_id] = job
-    threading.Thread(target=run_job, args=(job, url, model_name, language, output), daemon=True).start()
+    threading.Thread(target=run_job, args=(job, url, model_name, language, output, source),
+                     daemon=True).start()
     return jsonify(id=job_id)
 
 
@@ -463,11 +581,15 @@ def job_status(job_id):
     job = jobs.get(job_id)
     if not job:
         return jsonify(error='找不到工作'), 404
-    return jsonify({k: v for k, v in job.items() if k != 'started'})
+    out = {k: v for k, v in job.items() if k != 'started'}
+    if 'audio' in out:                # 本機檔案路徑不必給網頁
+        out['audio'] = {k: v for k, v in out['audio'].items() if k != 'path'}
+    return jsonify(out)
 
 
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8792
+    cleanup_old_audio()
     print(f'FB／YouTube 影片轉文字 -> http://localhost:{port}/   （Ctrl+C 結束）')
     app.run(host='127.0.0.1', port=port, threaded=True)
 

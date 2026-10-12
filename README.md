@@ -24,6 +24,18 @@ pip install -r requirements.txt
 3. 貼上網址 → 選語言、輸出方式 → 按「開始轉文字」
 4. 完成後可：勾/不勾「顯示時間碼」、複製、下載 .txt／.srt（字幕）／.md／Word
 
+### 只下載音檔（v1.9）
+
+不想馬上轉文字、只要聲音的話：貼好網址 → 選格式 → 按「**⬇ 只下載音檔**」。
+
+- **格式**：MP3（預設，任何裝置都能播，用 `imageio-ffmpeg` 附帶的 ffmpeg 轉 192 kbps，多幾秒）；
+  原始格式（最快，FB 是 m4a、YouTube 多是 webm／opus，有些播放器不支援 webm）。
+- 完成後出現**音檔卡片**：播放器可以先聽；「⬇ 下載音檔」存到電腦，**檔名是影片標題**（去掉 Windows 不能用的字元，最多 60 字）；
+  「**用這個音檔轉成文字**」用上面選的語言／模型／輸出直接轉，**不會再下載一次**。
+- 音檔暫存在 `%TEMP%b_stt`，保留 **2 小時**（每次開新工作、伺服器啟動時清掉過期的）。伺服器重開後舊的工作編號就失效了，要再下載一次。
+- API：`POST /api/audio {url, fmt: "mp3"|"orig"}` → 工作 id；`GET /api/audio/<id>` 播放（支援拖曳進度的 Range 請求）、`?dl=1` 下載；
+  `POST /api/transcribe {audio_id, model, language, output}` 用已下載的檔案轉文字。檔案路徑只從伺服器自己的工作紀錄來，不接受網頁傳路徑；回給網頁的工作狀態也不含本機路徑。
+
 > 直接雙擊 `index.html` 不能用：瀏覽器本身沒辦法抓 FB／YouTube 影片（CORS），一定要透過 `server.py`。
 
 ### 線上版（GitHub Pages）怎麼運作
@@ -58,7 +70,7 @@ GitHub Pages 只能放靜態網頁，**不能執行 Python**，所以線上版�
 | `index.html` | 網頁介面（無外部依賴，深色／淺色模式） |
 | `server.py` | 本機 Flask 伺服器：yt-dlp 下載音軌 → faster-whisper 辨識；Word 匯出 |
 | `start.bat` | 一鍵啟動並開瀏覽器 |
-| `requirements.txt` | Python 套件清單 |
+| `requirements.txt` | Python 套件清單（含 MP3 轉檔用的 `imageio-ffmpeg`） |
 | `.nojekyll` | 讓 GitHub Pages 原樣提供檔案（必須是空檔） |
 | `docs/architecture-*.mmd`／`.svg` | 架構圖原始碼與預先產生的 SVG（見「架構圖」） |
 | `.claude/skills/run-fb-stt/SKILL.md` | 給 Claude 用的「怎麼啟動／測試這個工具」說明 |
@@ -82,20 +94,22 @@ npx @mermaid-js/mermaid-cli -i docs/architecture-overview.mmd -o docs/architectu
 ```mermaid
 flowchart TD
     subgraph BROWSER["瀏覽器（index.html）"]
-        UI["網址／語言／模型／輸出<br/>❓ 說明・深淺色"]
+        UI["網址／語言／模型／輸出<br/>開始轉文字・只下載音檔<br/>❓ 說明・深淺色"]
         VIEW["結果畫面<br/>原文＋英文並列"]
         EXP["複製・.txt・.srt・.md<br/>（前端產生）"]
+        PLAYER["音檔卡片<br/>播放器・下載音檔<br/>用這個音檔轉成文字"]
     end
 
     PAGES["GitHub Pages<br/>sinliongtoo.github.io/fb-video-stt<br/>只放網頁"] -.->|"載入畫面"| UI
     LOCALPAGE["http://localhost:8792/<br/>server.py 直接提供"] -.->|"載入畫面"| UI
 
     subgraph PC["你的電腦（start.bat → server.py，Flask，只綁 127.0.0.1）"]
-        API["/api/transcribe<br/>/api/job/&lt;id&gt;<br/>/api/ping"]
+        API["/api/transcribe（url 或 audio_id）<br/>/api/audio・/api/job/&lt;id&gt;<br/>/api/ping"]
         CORS{"CORS 只允許<br/>sinliongtoo.github.io"}
-        JOB["背景工作 run_job()"]
+        JOB["背景工作<br/>run_job()／run_audio_job()"]
         YTDLP["yt-dlp<br/>只抓音軌 m4a／webm<br/>YouTube 用 Node.js 解驗證"]
-        TMP[("%TEMP%/fb_stt<br/>暫存音檔，用完刪除")]
+        TMP[("%TEMP%/fb_stt<br/>轉文字：用完刪除<br/>只下載音檔：保留 2 小時")]
+        FFMPEG["imageio-ffmpeg<br/>轉 MP3（選 MP3 時）"]
         FW["faster-whisper<br/>CPU int8，一次只載入一個模型"]
         DOCX["/api/docx<br/>python-docx"]
         subgraph MODELS["模型"]
@@ -109,6 +123,8 @@ flowchart TD
     UI -->|"POST JSON"| CORS --> API --> JOB
     JOB --> YTDLP -->|"下載"| FB
     YTDLP --> TMP --> FW
+    TMP <-->|"轉 MP3"| FFMPEG
+    PLAYER -->|"GET /api/audio/&lt;id&gt;<br/>播放・?dl=1 下載"| TMP
     WH --> FW
     BZ --> FW
     FW -->|"segments（＋en）"| JOB
@@ -144,6 +160,12 @@ sequenceDiagram
     S->>Y: 下載音軌（進度 0–100%）
     Y->>F: 抓公開影片的音軌（FB 多為 m4a，YouTube 多為 webm）
     F-->>Y: 音檔 → %TEMP%/fb_stt
+    opt 按「只下載音檔」（POST /api/audio {url, fmt}）
+        S->>S: fmt=mp3 時用 imageio-ffmpeg 轉 MP3；檔案保留 2 小時
+        S-->>P: 完成：標題、長度、格式、大小
+        P->>S: GET /api/audio/{id}（播放器）・?dl=1（下載，檔名＝影片標題）
+        U->>P: 按「用這個音檔轉成文字」→ POST /api/transcribe {audio_id, …}，跳過下載
+    end
     S->>W: 載入模型（台語固定 Breeze；切換模型時釋放舊的）
     S->>W: 自動偵測時先偵測語言；transcribe（中文給範例提示；只要英文時 task=translate）
     W-->>S: 逐段產生 segments（進度依時間位置；畫面先顯示原始分段）
@@ -262,7 +284,7 @@ Whisper 跟 LLM 是同一類技術（Transformer），裡面也有一小部分�
 ## 環境需求
 
 Windows、Python 3.12，套件：`flask`、`yt-dlp`、`faster-whisper`、`python-docx`（見 `requirements.txt`）。
-不需要另外裝 ffmpeg（只抓 m4a 音軌，faster-whisper 內建的 PyAV 就能解碼）。
+不需要另外裝系統 ffmpeg：轉文字只抓音軌，faster-whisper 內建的 PyAV 就能解碼 m4a／webm；「只下載音檔」選 MP3 時用 `imageio-ffmpeg` 套件附帶的 ffmpeg（`pip install -r requirements.txt` 會裝）。
 
 ## 台語模型
 
@@ -315,6 +337,13 @@ Breeze 實際輸出 vs 貼文原文：
 ## 開發紀錄（Changelog）
 
 > 版本號要在三個地方同步：`index.html` 最上方的 `.version-info`、「❓ 說明」裡的 `#changelogList`、以及這裡。
+
+### [2026-10-12] v1.9 — 只下載音檔
+- 新增「⬇ 只下載音檔」：MP3（imageio-ffmpeg 轉檔）或原始格式；音檔卡片有播放器、下載（檔名＝影片標題）、「用這個音檔轉成文字」（不再下載）。
+- `server.py`：`run_audio_job()`、`POST /api/audio`、`GET /api/audio/<id>`（`?dl=1` 下載）、`/api/transcribe` 接受 `audio_id`；暫存音檔保留 2 小時自動清理；`run_job()` 用已下載的檔案時不刪檔；`/api/job` 不回傳本機路徑。
+- 前端：工作進行中「開始轉文字」「只下載音檔」「用這個音檔轉成文字」三個按鈕都停用，避免同時跑兩個工作。
+- `requirements.txt` 加 `imageio-ffmpeg`；說明面板加「只下載音檔」與「音檔不存在或已過期」；架構圖更新。
+- 實測：YouTube「Me at the zoo」MP3 3 秒（447 KB）、原始 webm 1.3 秒；FB 台語 reel MP3 2.9 秒（1.4 MB，播放器 61.8 秒），下載檔名保留中文標題；用該音檔轉文字（台語）76 秒、12 段，沒有重新下載；播放器 Range 請求 206；亂給 id 或路徑都回 404。
 
 ### [2026-10-12] v1.8 — 標點與斷句
 - A1 標點整理、A2 中文範例提示詞、A3 重新斷句（台語用依標點切），細節與實測見「標點與斷句」。

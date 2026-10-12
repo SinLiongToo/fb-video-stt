@@ -193,6 +193,24 @@ both themes; confirm `.version-info` version equals the top `#changelogList` ent
   「，」, text unchanged; fben 17 sentence-whole; zoo 4.
 - More segments → `both` translation ~40 % slower (one translate pass per line).
 
+## Download audio only (v1.9)
+
+- `POST /api/audio {url, fmt: mp3|orig}` → `run_audio_job()` (job `kind: 'audio'`): yt-dlp,
+  then `to_mp3()` via `imageio_ffmpeg.get_ffmpeg_exe()` (libmp3lame 192k) if mp3. Keeps the
+  file in `WORK_DIR`; `job['audio'] = {path, ext, size, filename}`.
+- `GET /api/audio/<id>` serves it (Range → 206 for seeking); `?dl=1` = attachment with
+  `filename` from `safe_filename(title)` (keeps CJK, strips `\/:*?"<>|`, ≤ 60 chars).
+  Path comes only from the job record — never accept a path from the client.
+- `POST /api/transcribe {audio_id, …}` → `run_job(..., source=job)`: skips download and
+  must NOT delete the source file. `/api/job` strips `audio.path` before returning.
+- Files expire after `KEEP_SECONDS` (2 h); `cleanup_old_audio()` runs on each new job and
+  at startup. Server restart loses the `jobs` dict → old `audio_id`s 404 (expected).
+- Front end: `start(kind)` with `'text' | 'audio' | 'audioText'`; wire buttons as
+  `() => start('…')` — `onclick = start` would pass the click event as `kind`.
+  `setBusy()` disables all three buttons while any job runs.
+- Test: zoo MP3 ~3 s / 447 KB, webm ~1.3 s; FB taigi reel MP3 1.4 MB, player duration 61.8,
+  download filename = Chinese title; then 台語 audio→text ~75 s with no re-download.
+
 ## Languages and translate
 
 - `language` whitelist in server.py: `auto, zh, en, ja, fr, nan` — add new ones there **and**
