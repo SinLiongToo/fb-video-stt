@@ -87,7 +87,7 @@
       <button id="theme" type="button" title="切換深色／淺色模式">🖥 自動</button>
     </div>
   </header>
-  <p class="version-info">版本 v1.9｜最後更新 2026-10-12 14:41（台灣時間）｜完整記錄見「❓ 說明」</p>
+  <p class="version-info">版本 v1.10｜最後更新 2026-10-12 15:26（台灣時間）｜完整記錄見「❓ 說明」</p>
 
   <div class="card help-panel" id="helpPanel" hidden>
     <h2>使用說明</h2>
@@ -168,8 +168,10 @@
         （YouTube「不公開」影片有網址就可以）。也可能是網站改版，更新 yt-dlp 試試：<code>pip install -U yt-dlp</code>。</li>
       <li><strong>YouTube 說「請登入確認你不是機器人」</strong>：YouTube 偶爾會擋下載，先更新 yt-dlp
         （<code>pip install -U yt-dlp</code>），過一陣子再試。</li>
-      <li><strong>影片很長要等多久？</strong>沒有顯示卡的電腦，small 模型大約是影片長度的 1/3 到 1/2，
-        一小時的影片約 20～30 分鐘；「原文＋英文並列」約再 3 倍。長影片建議先用「只要原文」。</li>
+      <li><strong>影片很長要等多久？建議用短一點的影片</strong>：這個工具在你自己的電腦上用 CPU 跑，
+        <strong>比較適合幾分鐘內的短影片</strong>。small 模型大約是影片長度的 1/3 到 1/2（一小時約 20～30 分鐘），
+        台語模式大約跟影片一樣長，「原文＋英文並列」約再 3 倍。
+        長影片建議先按「只下載音檔」存成 MP3，再拿到有顯示卡（GPU）的工具（例如 Colab）去轉文字，會快很多。</li>
       <li><strong>「連線中斷」或「連不到你電腦上的伺服器」</strong>：伺服器的黑色視窗沒開或被關掉了，重新執行 <code>start.bat</code>。</li>
       <li><strong>新功能沒出現</strong>：伺服器要重開才會用到新版程式。在黑色視窗按 Ctrl+C，再執行一次 <code>start.bat</code>。</li>
       <li><strong>「音檔不存在或已過期」</strong>：下載的音檔只保留 2 小時，或伺服器重開過，請再按一次「只下載音檔」。</li>
@@ -182,6 +184,7 @@
 
     <h3>修改日誌</h3>
     <ul id="changelogList">
+      <li><strong>v1.10 — 2026-10-12 15:26</strong>：說明加註：本機適合短影片，長影片建議下載音檔後用 GPU 工具轉。</li>
       <li><strong>v1.9 — 2026-10-12 14:41</strong>：新增「只下載音檔」（MP3 或原始格式），可以先聽、下載，再決定要不要轉成文字。</li>
       <li><strong>v1.8 — 2026-10-12 13:38</strong>：改善中文標點（全形、補句尾）與斷句（太長的段落自動切成字幕長度），台語模式也有標點了。</li>
       <li><strong>v1.7 — 2026-10-12 12:50</strong>：支援 YouTube 影片／Shorts 網址；FB 標題前的觀看數、按讚數都會去掉。</li>

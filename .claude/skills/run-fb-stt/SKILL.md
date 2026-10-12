@@ -28,6 +28,9 @@ TXT / SRT / copy are built client-side; only Word goes through the server.
   youtu.be** (any subdomain). Don't widen it to arbitrary URLs — that turns the local server
   into an open downloader. Adding a site = URL_RE + page text/placeholder + help panel +
   diagrams (`architecture-overview` FB node, `architecture-job` participant F) + `baseName()`.
+- **No Colab/GPU integration** (user decided 2026-10-12, README「影片長度與GPU」): they have
+  their own GPU tools. Local CPU is meant for short videos; long ones = download audio
+  (v1.9) then transcribe elsewhere. Don't add tunnels/notebooks unless asked.
 - **No LLM at runtime** (user decided 2026-10-12, README「有沒有用到 LLM？」). Don't add an
   LLM API or local LLM without asking — it changes cost and the privacy story.
 - **Default language is `auto`, not `zh`.** Verified with the sample reel (English speech):
